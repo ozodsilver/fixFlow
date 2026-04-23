@@ -1,0 +1,15 @@
+:root {
+  --ff-bg: #f8fafc;
+  --ff-text: #0f172a;
+}
+
+html,
+body,
+#__nuxt {
+  min-height: 100dvh;
+}
+
+body {
+  background: var(--ff-bg);
+  color: var(--ff-text);
+}

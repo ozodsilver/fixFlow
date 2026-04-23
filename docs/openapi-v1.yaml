@@ -1,0 +1,832 @@
+openapi: 3.0.3
+info:
+  title: FixFlow V1 API
+  version: 1.0.0
+  description: Telegram Mini App service marketplace API contract (V1)
+servers:
+  - url: https://api.example.com
+security:
+  - cookieAuth: []
+
+tags:
+  - name: auth
+  - name: requester
+  - name: master
+  - name: admin
+  - name: telegram
+
+components:
+  securitySchemes:
+    cookieAuth:
+      type: apiKey
+      in: cookie
+      name: ff_session
+    telegramWebhookSecret:
+      type: apiKey
+      in: header
+      name: X-Telegram-Bot-Api-Secret-Token
+
+  schemas:
+    ErrorResponse:
+      type: object
+      required: [error]
+      properties:
+        error:
+          type: object
+          required: [code, message]
+          properties:
+            code:
+              type: string
+            message:
+              type: string
+            details:
+              type: object
+              additionalProperties: true
+
+    IdResponse:
+      type: object
+      properties:
+        data:
+          type: object
+          properties:
+            id:
+              type: string
+              format: uuid
+
+    SessionUser:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        telegram_user_id: { type: integer, format: int64 }
+        display_name: { type: string }
+        username: { type: string, nullable: true }
+        locale: { type: string, enum: [uz_cyrl, ru] }
+
+    Roles:
+      type: object
+      properties:
+        is_master: { type: boolean }
+        is_admin: { type: boolean }
+
+    ServiceRequest:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        public_code: { type: string }
+        status: { type: string }
+        domain_id: { type: integer }
+        issue_tag_id: { type: integer, nullable: true }
+        issue_custom: { type: string, nullable: true }
+        problem_summary: { type: string, nullable: true }
+        phone_e164: { type: string, nullable: true }
+        address_text: { type: string, nullable: true }
+        landmark_text: { type: string, nullable: true }
+        urgency: { type: string, nullable: true }
+        visit_time_mode: { type: string, nullable: true }
+        visit_time_at: { type: string, format: date-time, nullable: true }
+        consent_share: { type: boolean }
+        locale: { type: string, enum: [uz_cyrl, ru] }
+        created_at: { type: string, format: date-time }
+
+    IntakeReply:
+      type: object
+      properties:
+        ai_reply: { type: string }
+        intent: { type: string, enum: [collect, confirm, ready, offtopic, abuse] }
+        missing_required:
+          type: array
+          items: { type: string }
+        ready_for_dispatch: { type: boolean }
+
+paths:
+  /api/v1/auth/telegram/init:
+    post:
+      tags: [auth]
+      security: []
+      summary: Validate Telegram init data and create app session
+      x-error-codes: [auth.invalid_init_data, validation.failed, rate_limit.exceeded]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [init_data]
+              properties:
+                init_data: { type: string }
+                locale: { type: string, enum: [uz_cyrl, ru] }
+      responses:
+        '200':
+          description: Session created
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: object
+                    properties:
+                      session_expires_at: { type: string, format: date-time }
+                      user: { $ref: '#/components/schemas/SessionUser' }
+                      roles: { $ref: '#/components/schemas/Roles' }
+        '401':
+          description: Invalid init data
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+        '422':
+          description: Validation failed
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+
+  /api/v1/bootstrap:
+    get:
+      tags: [auth]
+      summary: Return session user, roles, and static config
+      x-error-codes: [auth.session_expired, access.forbidden]
+      responses:
+        '200':
+          description: Bootstrap payload
+        '401':
+          description: Session expired
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+
+  /api/v1/service-domains:
+    get:
+      tags: [requester]
+      summary: List active service domains
+      x-error-codes: [auth.session_expired]
+      responses:
+        '200':
+          description: Domain list
+
+  /api/v1/service-domains/{domainId}/issue-tags:
+    get:
+      tags: [requester]
+      summary: List active issue tags by domain
+      x-error-codes: [auth.session_expired, validation.failed]
+      parameters:
+        - in: path
+          name: domainId
+          required: true
+          schema: { type: integer }
+      responses:
+        '200': { description: Tag list }
+        '422':
+          description: Validation failed
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+
+  /api/v1/requests:
+    post:
+      tags: [requester]
+      summary: Create draft service request
+      x-error-codes: [auth.session_expired, validation.failed]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [domain_id]
+              properties:
+                domain_id: { type: integer }
+                locale: { type: string, enum: [uz_cyrl, ru] }
+      responses:
+        '201':
+          description: Created
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: object
+                    properties:
+                      request_id: { type: string, format: uuid }
+                      public_code: { type: string }
+                      status: { type: string }
+        '422':
+          description: Validation failed
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+
+    get:
+      tags: [requester]
+      summary: List caller requests
+      x-error-codes: [auth.session_expired]
+      parameters:
+        - in: query
+          name: status
+          schema: { type: string }
+        - in: query
+          name: limit
+          schema: { type: integer, minimum: 1, maximum: 100 }
+        - in: query
+          name: cursor
+          schema: { type: string }
+      responses:
+        '200': { description: Request list }
+
+  /api/v1/requests/{requestId}:
+    get:
+      tags: [requester]
+      summary: Get request details (owner only)
+      x-error-codes: [auth.session_expired, request.not_found, request.not_owner]
+      parameters:
+        - in: path
+          name: requestId
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        '200':
+          description: Request details
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data: { $ref: '#/components/schemas/ServiceRequest' }
+        '403':
+          description: Not owner
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+        '404':
+          description: Not found
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+
+  /api/v1/requests/{requestId}/intake/message:
+    post:
+      tags: [requester]
+      summary: Submit user intake message and get AI step response
+      x-error-codes: [auth.session_expired, request.not_found, request.not_owner, validation.failed, rate_limit.exceeded, idempotency.replayed]
+      parameters:
+        - in: path
+          name: requestId
+          required: true
+          schema: { type: string, format: uuid }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [text, idempotency_key]
+              properties:
+                text: { type: string, maxLength: 2000 }
+                idempotency_key: { type: string, maxLength: 128 }
+      responses:
+        '200':
+          description: Intake turn processed
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data: { $ref: '#/components/schemas/IntakeReply' }
+        '403':
+          description: Not owner
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+        '404':
+          description: Not found
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+        '429':
+          description: Rate limited
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+
+  /api/v1/requests/{requestId}/intake/confirm:
+    post:
+      tags: [requester]
+      summary: Confirm normalized intake for dispatch readiness
+      x-error-codes: [auth.session_expired, request.not_found, request.not_owner, request.not_dispatchable, validation.failed]
+      parameters:
+        - in: path
+          name: requestId
+          required: true
+          schema: { type: string, format: uuid }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [confirm]
+              properties:
+                confirm: { type: boolean, enum: [true] }
+      responses:
+        '200': { description: Request marked ready_for_dispatch }
+        '409':
+          description: Not dispatchable
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+
+  /api/v1/requests/{requestId}/dispatch:
+    post:
+      tags: [requester]
+      summary: Create/send dispatch to masters group
+      x-error-codes: [auth.session_expired, request.not_found, request.not_owner, request.not_dispatchable, dispatch.max_attempts_exhausted, idempotency.replayed]
+      parameters:
+        - in: path
+          name: requestId
+          required: true
+          schema: { type: string, format: uuid }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [idempotency_key]
+              properties:
+                idempotency_key: { type: string, maxLength: 128 }
+      responses:
+        '200':
+          description: Dispatched
+        '409':
+          description: Not dispatchable or attempts exhausted
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+
+  /api/v1/requests/{requestId}/attachments/photos:
+    post:
+      tags: [requester]
+      summary: Upload optional request photo
+      x-error-codes: [auth.session_expired, request.not_found, request.not_owner, validation.failed]
+      parameters:
+        - in: path
+          name: requestId
+          required: true
+          schema: { type: string, format: uuid }
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [photo]
+              properties:
+                photo:
+                  type: string
+                  format: binary
+      responses:
+        '201': { description: Uploaded }
+        '422':
+          description: Validation failed
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+
+  /api/v1/requests/{requestId}/cancel:
+    post:
+      tags: [requester]
+      summary: Cancel request (only before claim)
+      x-error-codes: [auth.session_expired, request.not_found, request.not_owner, request.not_dispatchable]
+      parameters:
+        - in: path
+          name: requestId
+          required: true
+          schema: { type: string, format: uuid }
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                reason: { type: string, maxLength: 500 }
+      responses:
+        '200': { description: Canceled }
+        '409':
+          description: Not cancellable in current state
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+
+  /api/v1/master/dispatches/{dispatchId}/preview:
+    get:
+      tags: [master]
+      summary: Get pre-claim masked dispatch preview
+      x-error-codes: [auth.session_expired, master.not_approved, dispatch.expired, access.forbidden, request.not_found]
+      parameters:
+        - in: path
+          name: dispatchId
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        '200': { description: Preview payload }
+        '403':
+          description: Not approved master or forbidden
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+        '409':
+          description: Expired dispatch
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+
+  /api/v1/master/dispatches/{dispatchId}/claim/confirm:
+    post:
+      tags: [master]
+      summary: Confirm claim (atomic)
+      x-error-codes: [auth.session_expired, master.not_approved, dispatch.expired, dispatch.already_claimed, dispatch.claim_conflict, idempotency.replayed]
+      parameters:
+        - in: path
+          name: dispatchId
+          required: true
+          schema: { type: string, format: uuid }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [idempotency_key]
+              properties:
+                idempotency_key: { type: string, maxLength: 128 }
+      responses:
+        '200': { description: Claim success, full PII returned }
+        '403':
+          description: Not approved master
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+        '409':
+          description: Expired/already claimed/conflict
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+
+  /api/v1/master/orders/{orderId}:
+    get:
+      tags: [master]
+      summary: Get assigned order details
+      x-error-codes: [auth.session_expired, access.forbidden, request.not_found]
+      parameters:
+        - in: path
+          name: orderId
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        '200': { description: Order detail }
+        '403':
+          description: Forbidden
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+
+  /api/v1/master/orders/{orderId}/status:
+    post:
+      tags: [master]
+      summary: Update assigned order status
+      x-error-codes: [auth.session_expired, access.forbidden, validation.failed, request.not_found]
+      parameters:
+        - in: path
+          name: orderId
+          required: true
+          schema: { type: string, format: uuid }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [to_status]
+              properties:
+                to_status:
+                  type: string
+                  enum: [in_progress, completed]
+      responses:
+        '200': { description: Updated }
+        '403':
+          description: Forbidden
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+        '422':
+          description: Validation failed
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+
+  /api/v1/master/orders/{orderId}/cancel:
+    post:
+      tags: [master]
+      summary: Master cancels assignment (moves order to reassignment_pending)
+      x-error-codes: [auth.session_expired, access.forbidden, validation.failed, request.not_found]
+      parameters:
+        - in: path
+          name: orderId
+          required: true
+          schema: { type: string, format: uuid }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [reason]
+              properties:
+                reason: { type: string, maxLength: 500 }
+      responses:
+        '200': { description: Reassignment pending }
+        '403':
+          description: Forbidden
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+
+  /api/v1/admin/orders:
+    get:
+      tags: [admin]
+      summary: List orders
+      x-error-codes: [auth.session_expired, access.forbidden]
+      parameters:
+        - in: query
+          name: status
+          schema: { type: string }
+        - in: query
+          name: from
+          schema: { type: string, format: date-time }
+        - in: query
+          name: to
+          schema: { type: string, format: date-time }
+        - in: query
+          name: limit
+          schema: { type: integer, minimum: 1, maximum: 100 }
+        - in: query
+          name: cursor
+          schema: { type: string }
+      responses:
+        '200': { description: Order list }
+        '403':
+          description: Forbidden
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+
+  /api/v1/admin/orders/{orderId}:
+    get:
+      tags: [admin]
+      summary: Order detail with request and assignment context
+      x-error-codes: [auth.session_expired, access.forbidden, request.not_found]
+      parameters:
+        - in: path
+          name: orderId
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        '200': { description: Order detail }
+        '403':
+          description: Forbidden
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+        '404':
+          description: Not found
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+
+  /api/v1/admin/requests/{requestId}:
+    get:
+      tags: [admin]
+      summary: Request detail with dispatch and intake history
+      x-error-codes: [auth.session_expired, access.forbidden, request.not_found]
+      parameters:
+        - in: path
+          name: requestId
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        '200': { description: Request detail }
+        '403':
+          description: Forbidden
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+        '404':
+          description: Not found
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+
+  /api/v1/admin/status-history:
+    get:
+      tags: [admin]
+      summary: Query status history
+      x-error-codes: [auth.session_expired, access.forbidden, validation.failed]
+      parameters:
+        - in: query
+          name: entity_type
+          schema: { type: string, enum: [request, order, dispatch, assignment] }
+        - in: query
+          name: entity_id
+          schema: { type: string, format: uuid }
+        - in: query
+          name: limit
+          schema: { type: integer, minimum: 1, maximum: 100 }
+        - in: query
+          name: cursor
+          schema: { type: string }
+      responses:
+        '200': { description: History list }
+        '403':
+          description: Forbidden
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+
+  /api/v1/admin/audit-logs:
+    get:
+      tags: [admin]
+      summary: Query audit logs
+      x-error-codes: [auth.session_expired, access.forbidden, validation.failed]
+      parameters:
+        - in: query
+          name: action
+          schema: { type: string }
+        - in: query
+          name: actor_user_id
+          schema: { type: string, format: uuid }
+        - in: query
+          name: from
+          schema: { type: string, format: date-time }
+        - in: query
+          name: to
+          schema: { type: string, format: date-time }
+        - in: query
+          name: limit
+          schema: { type: integer, minimum: 1, maximum: 100 }
+      responses:
+        '200': { description: Audit list }
+        '403':
+          description: Forbidden
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+
+  /api/v1/admin/orders/{orderId}/reassign:
+    post:
+      tags: [admin]
+      summary: Reassign order by redispatch or force assignment
+      x-error-codes: [auth.session_expired, access.forbidden, validation.failed, request.not_found]
+      parameters:
+        - in: path
+          name: orderId
+          required: true
+          schema: { type: string, format: uuid }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [mode, reason]
+              properties:
+                mode:
+                  type: string
+                  enum: [redispatch, force_assign]
+                target_master_id:
+                  type: string
+                  format: uuid
+                  nullable: true
+                reason:
+                  type: string
+      responses:
+        '200': { description: Reassigned }
+        '403':
+          description: Forbidden
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+        '422':
+          description: Validation failed
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+
+  /api/v1/admin/orders/{orderId}/cancel:
+    post:
+      tags: [admin]
+      summary: Admin cancel order and close request
+      x-error-codes: [auth.session_expired, access.forbidden, validation.failed, request.not_found]
+      parameters:
+        - in: path
+          name: orderId
+          required: true
+          schema: { type: string, format: uuid }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [reason]
+              properties:
+                reason: { type: string, maxLength: 500 }
+      responses:
+        '200': { description: Canceled }
+        '403':
+          description: Forbidden
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+
+  /api/v1/admin/masters/{userId}/approve:
+    post:
+      tags: [admin]
+      summary: Approve master profile
+      x-error-codes: [auth.session_expired, access.forbidden, validation.failed, request.not_found]
+      parameters:
+        - in: path
+          name: userId
+          required: true
+          schema: { type: string, format: uuid }
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                reason: { type: string }
+      responses:
+        '200': { description: Approved }
+        '403':
+          description: Forbidden
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+
+  /api/v1/admin/masters/{userId}/revoke:
+    post:
+      tags: [admin]
+      summary: Revoke master profile
+      x-error-codes: [auth.session_expired, access.forbidden, validation.failed, request.not_found]
+      parameters:
+        - in: path
+          name: userId
+          required: true
+          schema: { type: string, format: uuid }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [reason]
+              properties:
+                reason: { type: string }
+      responses:
+        '200': { description: Revoked }
+        '403':
+          description: Forbidden
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+
+  /api/v1/integrations/telegram/webhook:
+    post:
+      tags: [telegram]
+      security:
+        - telegramWebhookSecret: []
+      summary: Telegram webhook receiver
+      x-error-codes: [access.forbidden, idempotency.replayed]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: true
+      responses:
+        '200':
+          description: Accepted
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok: { type: boolean }
+        '403':
+          description: Invalid webhook secret
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
