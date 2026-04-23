@@ -3,33 +3,25 @@ import type { ServiceDomain } from '~/types/requester'
 
 const api = useRequesterApi()
 const { t, locale } = useAppI18n()
-const { session, refresh } = useSessionBootstrap()
-const runtimeConfig = useRuntimeConfig()
 
 const loading = ref(true)
 const domains = ref<ServiceDomain[]>([])
 const errorMessage = ref('')
 const creatingRequestDomainId = ref<number | null>(null)
-const isTelegramContext = ref(false)
-
-const devTelegramId = ref<number | null>(null)
-const devDisplayName = ref('Test User')
-const authLoading = ref(false)
 
 const localizedDomainName = (domain: ServiceDomain) =>
   locale.value === 'ru' ? domain.name_ru : domain.name_uz_cyrl
 
-const canUseDevLogin = computed(() => Boolean(runtimeConfig.public.allowDevAuthBypass) && !isTelegramContext.value)
-
-const tryTelegramAutoAuth = async () => {
+const ensureTelegramSession = async () => {
   if (!process.client) return
 
   const webApp = (window as Window & { Telegram?: { WebApp?: { initData?: string; ready?: () => void } } }).Telegram?.WebApp
   const initData = webApp?.initData?.trim()
 
-  if (!initData) return
+  if (!initData) {
+    throw new Error('auth.invalid_init_data')
+  }
 
-  isTelegramContext.value = true
   webApp?.ready?.()
 
   await api.initAuth({
@@ -43,41 +35,23 @@ const init = async () => {
   errorMessage.value = ''
 
   try {
-    if (!session.value) {
-      await tryTelegramAutoAuth()
-    }
+    await ensureTelegramSession()
 
-    await refresh()
     const domainsRes = await api.getServiceDomains()
     domains.value = domainsRes.data
   }
   catch (error: unknown) {
-    errorMessage.value =
-      (error as { data?: { error?: { message?: string } } })?.data?.error?.message || t('common.unexpectedError')
+    const code = (error as { data?: { error?: { code?: string; message?: string } } })?.data?.error?.code
+    if (code === 'auth.invalid_init_data' || (error as Error).message === 'auth.invalid_init_data') {
+      errorMessage.value = 'Mini Appni Telegram ichida oching.'
+    }
+    else {
+      errorMessage.value =
+        (error as { data?: { error?: { message?: string } } })?.data?.error?.message || t('common.unexpectedError')
+    }
   }
   finally {
     loading.value = false
-  }
-}
-
-const loginWithDev = async () => {
-  if (!devTelegramId.value) return
-
-  authLoading.value = true
-  try {
-    await api.initAuth({
-      telegram_user_id: devTelegramId.value,
-      display_name: devDisplayName.value,
-      locale: locale.value
-    })
-    await init()
-  }
-  catch (error: unknown) {
-    errorMessage.value =
-      (error as { data?: { error?: { message?: string } } })?.data?.error?.message || t('common.unexpectedError')
-  }
-  finally {
-    authLoading.value = false
   }
 }
 
@@ -109,21 +83,6 @@ onMounted(init)
     <AppHeader :title="t('common.appName')" :subtitle="t('requester.homeSubtitle')" logo-text="FF" />
 
     <main class="space-y-4 px-4 py-4">
-      <section v-if="!session && canUseDevLogin">
-        <div class="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
-          <p class="text-sm font-semibold text-slate-900">{{ t('auth.title') }}</p>
-          <p class="mt-1 text-xs text-slate-600">{{ t('auth.subtitle') }}</p>
-
-          <div class="mt-3 space-y-2">
-            <UInput v-model.number="devTelegramId" type="number" :placeholder="t('auth.telegramId')" />
-            <UInput v-model="devDisplayName" :placeholder="t('auth.displayName')" />
-            <UButton block :loading="authLoading" @click="loginWithDev">
-              {{ t('auth.submit') }}
-            </UButton>
-          </div>
-        </div>
-      </section>
-
       <h2 class="text-sm font-semibold text-slate-800">{{ t('requester.homeTitle') }}</h2>
 
       <LoadingState v-if="loading" :label="t('common.loading')" />
