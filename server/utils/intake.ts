@@ -41,6 +41,10 @@ const defaultReplies = {
   askFallback: {
     uz_cyrl: 'Илтимос, муаммони қисқача ёзинг ва хизматга тегишли маълумотни қолдиринг.',
     ru: 'Пожалуйста, кратко опишите проблему и оставьте данные по услуге.'
+  },
+  freeFlowAck: {
+    uz_cyrl: 'Тушунарли. Қўшимча саволингиз ёки маълумотингизни ёзинг.',
+    ru: 'Понятно. Можете написать дополнительный вопрос или детали.'
   }
 } as const
 
@@ -87,19 +91,8 @@ function asShortText(raw: unknown, max: number): string | null {
 }
 
 export function computeMissingFields(current: IntakeCurrentState) {
-  const missing: string[] = []
-
-  if (!current.domain_id) missing.push('service_domain')
-  if (!current.issue_tag_id && !current.issue_custom) missing.push('issue_type')
-  if (!current.problem_summary) missing.push('problem_summary')
-  if (!current.phone_e164) missing.push('phone')
-  if (!current.address_text) missing.push('address')
-  if (current.address_text && current.address_text.length < 12 && !current.landmark_text) missing.push('landmark')
-  if (!current.urgency) missing.push('urgency')
-  if (!current.visit_time_mode) missing.push('visit_time')
-  if (!current.consent_share) missing.push('consent')
-
-  return missing
+  void current
+  return []
 }
 
 function buildPrompt(locale: 'uz_cyrl' | 'ru', missing: string[]) {
@@ -216,7 +209,7 @@ function fallbackAnalyze(input: IntakeInput): IntakeOutput {
   const missing = computeMissingFields(merged)
   return {
     intent: missing.length === 0 ? 'ready' : 'collect',
-    aiReply: buildPrompt(input.locale, missing),
+    aiReply: missing.length === 0 ? defaultReplies.freeFlowAck[input.locale] : buildPrompt(input.locale, missing),
     updates
   }
 }
