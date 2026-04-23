@@ -37,13 +37,7 @@ interface GroqReplyPayload {
   abuse?: boolean
 }
 
-const offTopicPatterns = ['bitcoin', 'futbol', 'ob-havo', 'weather', 'movie', 'kino', 'music', 'hazil']
-
 const defaultReplies = {
-  offtopic: {
-    uz_cyrl: 'Кечирасиз, мен фақат хизмат бўйича жавоб бераман.',
-    ru: 'Извините, я отвечаю только по вопросам услуг.'
-  },
   askFallback: {
     uz_cyrl: 'Илтимос, муаммони қисқача ёзинг ва хизматга тегишли маълумотни қолдиринг.',
     ru: 'Пожалуйста, кратко опишите проблему и оставьте данные по услуге.'
@@ -62,7 +56,7 @@ function normalizeIssueCustom(raw: string): string | null {
   const value = raw
     .trim()
     .toLowerCase()
-    .replace(/[^a-z0-9_\- ]/g, '')
+    .replace(/[^\p{L}\p{N}_\- ]/gu, '')
     .replace(/\s+/g, '_')
     .slice(0, 64)
   return value || null
@@ -142,17 +136,33 @@ function buildPrompt(locale: 'uz_cyrl' | 'ru', missing: string[]) {
   return locale === 'ru' ? `Пожалуйста, ${ru[next]}.` : `Илтимос, ${uz[next]}.`
 }
 
-function fallbackAnalyze(input: IntakeInput): IntakeOutput {
-  const text = input.text.trim()
+function inferIssueCustomFromText(raw: string): string | null {
+  const text = raw.trim()
   const lower = text.toLowerCase()
 
-  if (offTopicPatterns.some((token) => lower.includes(token))) {
-    return {
-      intent: 'offtopic',
-      aiReply: defaultReplies.offtopic[input.locale],
-      updates: {}
-    }
+  const explicitMatch = text.match(/(?:муаммо\s*тури|muammo\s*turi|тип\s*проблемы|issue\s*type)\s*[:\-]\s*(.+)$/i)
+  if (explicitMatch?.[1]) {
+    return normalizeIssueCustom(explicitMatch[1].slice(0, 64))
   }
+
+  if (/(қувур|труба|pipe|shlang|шланг)/i.test(lower) && /(ёрил|yoril|прорв|burst|лопнул)/i.test(lower)) {
+    return 'pipe_burst'
+  }
+  if (/(ҳожатхона|туалет|toilet|унитаз)/i.test(lower)) {
+    return 'toilet_problem'
+  }
+  if (/(канализац|sewer|kanaliz)/i.test(lower)) {
+    return 'sewer_issue'
+  }
+  if (/(сув|вода|water line|водопровод|вода линия)/i.test(lower)) {
+    return 'water_line_issue'
+  }
+
+  return null
+}
+
+function fallbackAnalyze(input: IntakeInput): IntakeOutput {
+  const text = input.text.trim()
 
   const updates: Partial<IntakeCurrentState> = {}
 
@@ -192,10 +202,10 @@ function fallbackAnalyze(input: IntakeInput): IntakeOutput {
   }
 
   if (!input.current.issue_tag_id && !input.current.issue_custom) {
-    if (/(қувур|труба|pipe)/i.test(text) && /(ёрил|прорв|burst)/i.test(text)) updates.issue_custom = 'pipe_burst'
-    else if (/(ҳожатхона|туалет|toilet)/i.test(text)) updates.issue_custom = 'toilet_problem'
-    else if (/(канализац|sewer)/i.test(text)) updates.issue_custom = 'sewer_issue'
-    else if (/(сув|вода|water line)/i.test(text)) updates.issue_custom = 'water_line_issue'
+    const inferredIssue = inferIssueCustomFromText(text)
+    if (inferredIssue) {
+      updates.issue_custom = inferredIssue
+    }
   }
 
   const merged = {
@@ -221,7 +231,7 @@ function sanitizeUpdates(
 
   const normalized: Partial<IntakeCurrentState> = {}
 
-  const issueCustomRaw = asShortText(updates.issue_custom, 64)
+  const issueCustomRaw = asShortText(updates.issue_custom ?? updates.issue_type ?? updates.problem_type, 64)
   if (issueCustomRaw) {
     normalized.issue_custom = normalizeIssueCustom(issueCustomRaw)
   }
@@ -308,8 +318,8 @@ async function callGroq(input: IntakeInput, options: IntakeAiOptions): Promise<G
   const localeLabel = input.locale === 'ru' ? 'ru' : 'uz_cyrl'
 
   const systemPrompt = [
-    'You are a strict intake assistant for home service marketplace.',
-    'You must ONLY discuss service request intake. If user is off-topic, set intent=offtopic and return refusal.',
+    'You are an assistant in a home service request chat.',
+    'Answer user questions naturally and briefly, then continue intake if required fields are still missing.',
     'Keep ai_reply short: maximum 2 short operational sentences.',
     'Collect/update only these fields: issue_custom, problem_summary, phone_raw, address_text, landmark_text, urgency, visit_time_mode, visit_time_at, consent_share.',
     'urgency must be one of: low, normal, high, emergency.',
@@ -323,9 +333,7 @@ async function callGroq(input: IntakeInput, options: IntakeAiOptions): Promise<G
       locale: localeLabel,
       user_message: input.text,
       current_fields: input.current,
-      missing_required: missing,
-      refusal_uz_cyrl: defaultReplies.offtopic.uz_cyrl,
-      refusal_ru: defaultReplies.offtopic.ru
+      missing_required: missing
     },
     null,
     2
@@ -391,15 +399,6 @@ export async function analyzeIntakeMessage(input: IntakeInput, options: IntakeAi
     }
   }
 
-  const lower = text.toLowerCase()
-  if (offTopicPatterns.some((token) => lower.includes(token))) {
-    return {
-      intent: 'offtopic',
-      aiReply: defaultReplies.offtopic[input.locale],
-      updates: {}
-    }
-  }
-
   const fallback = fallbackAnalyze(input)
   const groq = await callGroq(input, options)
   if (!groq) {
@@ -415,16 +414,9 @@ export async function analyzeIntakeMessage(input: IntakeInput, options: IntakeAi
   }
   const missing = computeMissingFields(merged)
 
-  const isOffTopic = groqIntent === 'offtopic' || groq.offtopic === true
-  if (isOffTopic) {
-    return {
-      intent: 'offtopic',
-      aiReply: defaultReplies.offtopic[input.locale],
-      updates: {}
-    }
-  }
-
-  const intent = missing.length === 0 ? (groqIntent === 'confirm' ? 'confirm' : 'ready') : 'collect'
+  const intent = missing.length === 0
+    ? (groqIntent === 'confirm' ? 'confirm' : 'ready')
+    : 'collect'
   return {
     intent,
     aiReply: normalizeAiReply(groq.ai_reply, input.locale, missing),

@@ -325,10 +325,6 @@ onMounted(loadRequest)
           :resolve-label="resolveFieldLabel"
         />
 
-        <section v-if="lastIntent === 'offtopic'" class="rounded-2xl border border-rose-200 bg-rose-50 p-3">
-          <p class="text-xs font-semibold uppercase tracking-wide text-rose-700">{{ t('requester.offtopicRefusal') }}</p>
-        </section>
-
         <section v-if="readyForDispatch" class="ff-rise rounded-2xl border border-emerald-200 bg-emerald-50/95 p-3">
           <p class="text-sm font-bold text-emerald-800">{{ t('requester.readyToDispatch') }}</p>
           <div class="mt-3 flex flex-wrap gap-2">
