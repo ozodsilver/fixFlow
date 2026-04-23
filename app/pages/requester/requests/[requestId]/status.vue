@@ -49,6 +49,22 @@ const statusLabel = (status: RequestStatus) => {
   return map[status] || status
 }
 
+const statusToneClass = (status: RequestStatus) => {
+  if (status === 'draft' || status === 'intake_in_progress') return 'bg-amber-100 text-amber-800'
+  if (status === 'ready_for_dispatch' || status === 'dispatched') return 'bg-sky-100 text-sky-800'
+  if (status === 'in_fulfillment') return 'bg-emerald-100 text-emerald-800'
+  if (status === 'closed_completed') return 'bg-teal-100 text-teal-800'
+  if (status === 'closed_canceled_user' || status === 'closed_canceled_admin') return 'bg-rose-100 text-rose-800'
+  return 'bg-slate-100 text-slate-700'
+}
+
+const statusStep = (status: RequestStatus) => {
+  if (status === 'draft' || status === 'intake_in_progress') return 1
+  if (status === 'ready_for_dispatch' || status === 'dispatched') return 2
+  if (status === 'in_fulfillment') return 3
+  return 4
+}
+
 const load = async (silent = false) => {
   if (silent) {
     refreshing.value = true
@@ -125,17 +141,31 @@ onBeforeUnmount(() => {
       />
 
       <template v-else-if="request">
-        <section class="ff-panel ff-rise rounded-2xl p-4">
+        <section class="ff-panel-soft ff-rise rounded-2xl p-4">
           <p class="text-xs font-bold uppercase tracking-wide text-slate-500">{{ t('common.status') }}</p>
           <div class="mt-2 flex items-center justify-between gap-3">
             <p class="text-sm font-bold tracking-tight text-slate-900">{{ request.public_code }}</p>
-            <span class="rounded-full bg-emerald-100 px-2.5 py-1 text-xs font-bold text-emerald-800">
+            <span class="ff-status-chip" :class="statusToneClass(request.status)">
               {{ statusLabel(request.status) }}
             </span>
           </div>
+          <div class="mt-3 grid grid-cols-4 gap-1.5">
+            <div
+              v-for="n in 4"
+              :key="n"
+              class="h-1.5 rounded-full"
+              :class="n <= statusStep(request.status) ? 'bg-emerald-500' : 'bg-slate-200'"
+            />
+          </div>
         </section>
 
-        <RequestSummaryCard :title="t('requester.summaryTitle')" :request="request" :labels="summaryLabels" />
+        <RequestSummaryCard
+          :title="t('requester.summaryTitle')"
+          :request="request"
+          :labels="summaryLabels"
+          :status-text="statusLabel(request.status)"
+          :status-class="statusToneClass(request.status)"
+        />
 
         <ErrorState
           v-if="errorMessage"
@@ -147,18 +177,19 @@ onBeforeUnmount(() => {
 
         <section class="ff-panel ff-rise rounded-2xl p-3">
           <div class="flex flex-wrap gap-2">
-            <UButton color="neutral" variant="soft" :loading="refreshing" @click="load(true)">
+            <UButton color="neutral" variant="soft" class="font-semibold" :loading="refreshing" @click="load(true)">
               {{ t('common.refresh') }}
             </UButton>
             <UButton
               v-if="canContinueIntake"
               color="primary"
               variant="soft"
+              class="font-semibold"
               @click="navigateTo(`/requester/requests/${request.id}/intake`)"
             >
               {{ t('requester.continueIntake') }}
             </UButton>
-            <UButton v-if="canCancel" color="error" variant="soft" :loading="cancelling" @click="cancelRequest">
+            <UButton v-if="canCancel" color="error" variant="soft" class="font-semibold" :loading="cancelling" @click="cancelRequest">
               {{ t('requester.cancelRequest') }}
             </UButton>
           </div>

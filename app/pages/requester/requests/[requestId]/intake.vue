@@ -52,6 +52,30 @@ const canDispatch = computed(() => {
   return request.value.status === 'ready_for_dispatch'
 })
 
+const statusLabel = (status: RequestStatus) => {
+  const map: Record<RequestStatus, string> = {
+    draft: t('requester.statusDraft'),
+    intake_in_progress: t('requester.statusIntakeInProgress'),
+    ready_for_dispatch: t('requester.statusReadyForDispatch'),
+    dispatched: t('requester.statusDispatched'),
+    in_fulfillment: t('requester.statusInFulfillment'),
+    closed_completed: t('requester.statusClosedCompleted'),
+    closed_canceled_user: t('requester.statusClosedCanceledUser'),
+    closed_canceled_admin: t('requester.statusClosedCanceledAdmin'),
+    closed_unfulfilled: t('requester.statusClosedUnfulfilled')
+  }
+
+  return map[status] || status
+}
+
+const statusToneClass = (status: RequestStatus) => {
+  if (status === 'draft' || status === 'intake_in_progress') return 'bg-amber-100 text-amber-800'
+  if (status === 'ready_for_dispatch' || status === 'dispatched') return 'bg-sky-100 text-sky-800'
+  if (status === 'in_fulfillment') return 'bg-emerald-100 text-emerald-800'
+  if (status === 'closed_completed') return 'bg-teal-100 text-teal-800'
+  return 'bg-slate-100 text-slate-700'
+}
+
 const summaryLabels = computed(() => ({
   id: t('requester.summaryId'),
   status: t('requester.summaryStatus'),
@@ -274,12 +298,25 @@ onMounted(loadRequest)
       />
 
       <template v-else-if="request">
-        <section class="ff-panel ff-rise rounded-2xl p-3">
-          <p class="text-xs font-semibold uppercase tracking-wide text-slate-500">{{ t('requester.domainLabel') }}</p>
-          <p class="mt-1 text-sm font-bold tracking-tight text-slate-900">{{ domainName }}</p>
+        <section class="ff-panel-soft ff-rise rounded-2xl p-3">
+          <div class="flex items-start justify-between gap-3">
+            <div class="min-w-0">
+              <p class="text-xs font-semibold uppercase tracking-wide text-slate-500">{{ t('requester.domainLabel') }}</p>
+              <p class="mt-1 truncate text-sm font-bold tracking-tight text-slate-900">{{ domainName }}</p>
+            </div>
+            <span class="ff-status-chip shrink-0" :class="statusToneClass(request.status)">
+              {{ statusLabel(request.status) }}
+            </span>
+          </div>
         </section>
 
-        <RequestSummaryCard :title="t('requester.summaryTitle')" :request="request" :labels="summaryLabels" />
+        <RequestSummaryCard
+          :title="t('requester.summaryTitle')"
+          :request="request"
+          :labels="summaryLabels"
+          :status-text="statusLabel(request.status)"
+          :status-class="statusToneClass(request.status)"
+        />
 
         <IntakeProgressHint
           v-if="missingRequired.length > 0"
@@ -292,16 +329,16 @@ onMounted(loadRequest)
           <p class="text-xs font-semibold uppercase tracking-wide text-rose-700">{{ t('requester.offtopicRefusal') }}</p>
         </section>
 
-        <section v-if="readyForDispatch" class="ff-rise rounded-2xl border border-emerald-200 bg-emerald-50/90 p-3">
+        <section v-if="readyForDispatch" class="ff-rise rounded-2xl border border-emerald-200 bg-emerald-50/95 p-3">
           <p class="text-sm font-bold text-emerald-800">{{ t('requester.readyToDispatch') }}</p>
           <div class="mt-3 flex flex-wrap gap-2">
-            <UButton :loading="confirming" :disabled="!canConfirm" color="neutral" variant="soft" @click="confirmIntake">
+            <UButton :loading="confirming" :disabled="!canConfirm" color="neutral" variant="soft" class="font-semibold" @click="confirmIntake">
               {{ t('requester.confirmIntake') }}
             </UButton>
-            <UButton :loading="dispatching" :disabled="!canDispatch" color="primary" @click="dispatch">
+            <UButton :loading="dispatching" :disabled="!canDispatch" color="primary" class="font-semibold" @click="dispatch">
               {{ t('requester.dispatch') }}
             </UButton>
-            <UButton color="neutral" variant="ghost" @click="navigateTo(`/requester/requests/${request.id}/status`)">
+            <UButton color="neutral" variant="ghost" class="font-semibold" @click="navigateTo(`/requester/requests/${request.id}/status`)">
               {{ t('requester.goStatus') }}
             </UButton>
           </div>
@@ -318,7 +355,7 @@ onMounted(loadRequest)
         <section class="ff-panel rounded-2xl p-3">
           <p class="text-xs font-bold uppercase tracking-wide text-slate-500">{{ t('requester.chatTitle') }}</p>
 
-          <div class="mt-2 max-h-[45dvh] min-h-32 space-y-2 overflow-y-auto rounded-xl bg-slate-50 p-2">
+          <div class="ff-scroll mt-2 max-h-[46dvh] min-h-40 space-y-2 overflow-y-auto rounded-xl bg-slate-50 p-2.5">
             <ChatMessageBubble
               v-for="line in messages"
               :key="line.id"

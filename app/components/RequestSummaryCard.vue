@@ -10,6 +10,8 @@ const props = defineProps<{
     summary?: string
     address?: string
   }
+  statusText?: string
+  statusClass?: string
 }>()
 </script>
 
@@ -24,7 +26,9 @@ const props = defineProps<{
       </div>
       <div class="flex items-center justify-between gap-3">
         <dt class="text-slate-500">{{ props.labels?.status || 'Status' }}</dt>
-        <dd class="font-medium">{{ props.request.status }}</dd>
+        <dd class="ff-status-chip" :class="props.statusClass || 'bg-slate-100 text-slate-700'">
+          {{ props.statusText || props.request.status }}
+        </dd>
       </div>
       <div v-if="props.request.problem_summary" class="pt-1">
         <dt class="text-slate-500">{{ props.labels?.summary || 'Summary' }}</dt>

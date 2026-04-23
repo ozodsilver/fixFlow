@@ -29,7 +29,7 @@ const submit = () => {
 
 <template>
   <div class="sticky bottom-0 border-t border-white/50 bg-white/80 p-3 backdrop-blur-xl">
-    <div class="ff-shell flex items-end gap-2">
+    <div class="ff-shell ff-panel-soft flex items-end gap-2 rounded-2xl p-2">
       <UTextarea
         v-model="text"
         :rows="2"
@@ -43,7 +43,7 @@ const submit = () => {
         :loading="props.loading"
         :disabled="props.disabled"
         color="primary"
-        class="h-10 shrink-0 rounded-xl px-4 font-semibold"
+        class="h-10 shrink-0 rounded-xl px-4 font-bold"
         @click="submit"
       >
         {{ props.sendLabel }}

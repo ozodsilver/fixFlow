@@ -29,6 +29,14 @@ const statusLabel = (status: RequestStatus) => {
   return map[status] || status
 }
 
+const statusToneClass = (status: RequestStatus) => {
+  if (status === 'draft' || status === 'intake_in_progress') return 'bg-amber-100 text-amber-800'
+  if (status === 'ready_for_dispatch' || status === 'dispatched') return 'bg-sky-100 text-sky-800'
+  if (status === 'in_fulfillment') return 'bg-emerald-100 text-emerald-800'
+  if (status === 'closed_completed') return 'bg-teal-100 text-teal-800'
+  return 'bg-slate-100 text-slate-700'
+}
+
 const intakeStatuses = new Set<RequestStatus>(['draft', 'intake_in_progress', 'ready_for_dispatch'])
 
 const requestOpenPath = (request: ServiceRequest) =>
@@ -184,8 +192,18 @@ onMounted(init)
   <div class="ff-shell min-h-dvh">
     <AppHeader :title="t('common.appName')" :subtitle="t('requester.homeSubtitle')" logo-text="FF" />
 
-    <main class="space-y-4 px-4 py-4">
-      <h2 class="text-sm font-bold tracking-tight text-slate-900">{{ t('requester.homeTitle') }}</h2>
+    <main class="space-y-5 px-4 py-4">
+      <section class="ff-panel-soft ff-rise rounded-2xl p-4">
+        <div class="flex items-start gap-3">
+          <div class="rounded-xl bg-emerald-100 p-2.5 text-emerald-700">
+            <UIcon name="i-lucide-life-buoy" class="size-5" />
+          </div>
+          <div class="min-w-0">
+            <p class="text-sm font-extrabold tracking-tight text-slate-900">{{ t('requester.homeTitle') }}</p>
+            <p class="mt-1 text-xs leading-5 text-slate-600">{{ t('requester.homeSubtitle') }}</p>
+          </div>
+        </div>
+      </section>
 
       <LoadingState v-if="loading" :label="t('common.loading')" />
 
@@ -204,6 +222,13 @@ onMounted(init)
       />
 
       <div v-else class="space-y-3">
+        <div class="flex items-center justify-between">
+          <h2 class="ff-section-title">{{ t('requester.homeTitle') }}</h2>
+          <span class="rounded-full bg-slate-100 px-2.5 py-1 text-[11px] font-bold text-slate-600">
+            {{ domains.length }}
+          </span>
+        </div>
+
         <ServiceDomainCard
           v-for="domain in domains"
           :key="domain.id"
@@ -218,9 +243,9 @@ onMounted(init)
         </p>
       </div>
 
-      <section v-if="!loading" class="space-y-2 pt-1">
+      <section v-if="!loading" class="space-y-2">
         <div class="flex items-center justify-between gap-2">
-          <h3 class="text-sm font-bold tracking-tight text-slate-900">{{ t('requester.myRequestsTitle') }}</h3>
+          <h3 class="ff-section-title">{{ t('requester.myRequestsTitle') }}</h3>
           <UButton size="xs" color="neutral" variant="ghost" @click="init">
             {{ t('common.refresh') }}
           </UButton>
@@ -240,10 +265,17 @@ onMounted(init)
             class="ff-panel ff-rise w-full rounded-2xl p-3 text-left transition hover:-translate-y-0.5 hover:border-emerald-300"
             @click="navigateTo(requestOpenPath(request))"
           >
-            <div class="flex items-start justify-between gap-3">
+            <div class="flex items-start justify-between gap-2">
               <div class="min-w-0">
-                <p class="text-sm font-semibold text-slate-900">{{ request.public_code }}</p>
-                <p class="mt-1 text-xs text-slate-600">{{ statusLabel(request.status) }}</p>
+                <p class="text-sm font-bold tracking-tight text-slate-900">{{ request.public_code }}</p>
+                <p class="mt-1 truncate text-xs text-slate-600">
+                  {{ request.problem_summary || t('requester.openChat') }}
+                </p>
+                <p class="mt-1">
+                  <span class="ff-status-chip" :class="statusToneClass(request.status)">
+                    {{ statusLabel(request.status) }}
+                  </span>
+                </p>
               </div>
               <span class="rounded-full bg-emerald-50 px-2 py-1 text-[11px] font-medium text-emerald-700">
                 {{ t('common.open') }}
