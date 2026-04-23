@@ -12,17 +12,68 @@ const creatingRequestDomainId = ref<number | null>(null)
 const localizedDomainName = (domain: ServiceDomain) =>
   locale.value === 'ru' ? domain.name_ru : domain.name_uz_cyrl
 
-const ensureTelegramSession = async () => {
+const extractRawParam = (input: string, key: string): string | null => {
+  const normalized = input.startsWith('?') || input.startsWith('#') ? input.slice(1) : input
+  if (!normalized) return null
+
+  for (const part of normalized.split('&')) {
+    if (part.startsWith(`${key}=`)) {
+      const raw = part.slice(key.length + 1)
+      if (!raw) return null
+      try {
+        return decodeURIComponent(raw)
+      }
+      catch {
+        return raw
+      }
+    }
+  }
+
+  return null
+}
+
+const getTelegramInitData = (): string | null => {
+  if (!process.client) return null
+  const webApp = (window as Window & { Telegram?: { WebApp?: { initData?: string; ready?: () => void } } }).Telegram?.WebApp
+  const fromSdk = webApp?.initData?.trim()
+  if (fromSdk) return fromSdk
+
+  const fromQuery = extractRawParam(window.location.search, 'tgWebAppData')
+  if (fromQuery?.trim()) return fromQuery
+
+  const fromHash = extractRawParam(window.location.hash, 'tgWebAppData')
+  if (fromHash?.trim()) return fromHash
+
+  const cached = sessionStorage.getItem('ff_tg_init_data')
+  if (cached?.trim()) return cached
+
+  return null
+}
+
+const waitForTelegramInitData = async (): Promise<string | null> => {
+  const maxAttempts = 20
+  const intervalMs = 120
+
+  for (let i = 0; i < maxAttempts; i += 1) {
+    const value = getTelegramInitData()
+    if (value) return value
+    await new Promise(resolve => setTimeout(resolve, intervalMs))
+  }
+
+  return null
+}
+
+const tryTelegramAuth = async () => {
   if (!process.client) return
 
-  const webApp = (window as Window & { Telegram?: { WebApp?: { initData?: string; ready?: () => void } } }).Telegram?.WebApp
-  const initData = webApp?.initData?.trim()
-
+  const webApp = (window as Window & { Telegram?: { WebApp?: { ready?: () => void } } }).Telegram?.WebApp
+  const initData = await waitForTelegramInitData()
   if (!initData) {
     throw new Error('auth.invalid_init_data')
   }
 
   webApp?.ready?.()
+  sessionStorage.setItem('ff_tg_init_data', initData)
 
   await api.initAuth({
     init_data: initData,
@@ -35,15 +86,38 @@ const init = async () => {
   errorMessage.value = ''
 
   try {
-    await ensureTelegramSession()
-
+    // 1) Try with existing session cookie first.
     const domainsRes = await api.getServiceDomains()
     domains.value = domainsRes.data
   }
   catch (error: unknown) {
-    const code = (error as { data?: { error?: { code?: string; message?: string } } })?.data?.error?.code
-    if (code === 'auth.invalid_init_data' || (error as Error).message === 'auth.invalid_init_data') {
-      errorMessage.value = 'Mini Appni Telegram ichida oching.'
+    const firstCode = (error as { data?: { error?: { code?: string } } })?.data?.error?.code
+    const firstStatus = (error as { statusCode?: number })?.statusCode
+
+    if (firstCode === 'auth.session_expired' || firstStatus === 401) {
+      try {
+        // 2) If session is missing, authenticate via Telegram initData and retry.
+        await tryTelegramAuth()
+        const domainsRes = await api.getServiceDomains()
+        domains.value = domainsRes.data
+        return
+      }
+      catch (authError: unknown) {
+        const authCode = (authError as { data?: { error?: { code?: string; message?: string } } })?.data?.error?.code
+        const authMessage = (authError as { data?: { error?: { message?: string } } })?.data?.error?.message || ''
+        if (authCode === 'auth.invalid_init_data' || (authError as Error).message === 'auth.invalid_init_data') {
+          if (authMessage.includes('not configured')) {
+            errorMessage.value = 'Server sozlamasida Telegram bot token kiritilmagan.'
+          }
+          else {
+            errorMessage.value = "Mini Appni bot ichidagi 'Open App' tugmasidan oching."
+          }
+        }
+        else {
+          errorMessage.value =
+            (authError as { data?: { error?: { message?: string } } })?.data?.error?.message || t('common.unexpectedError')
+        }
+      }
     }
     else {
       errorMessage.value =

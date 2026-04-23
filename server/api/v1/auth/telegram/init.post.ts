@@ -22,7 +22,7 @@ export default defineEventHandler(async (event) => {
 
   if (body.init_data) {
     if (!config.telegramBotToken) {
-      apiError(401, 'auth.invalid_init_data', 'Telegram bot token is not configured')
+      apiError(500, 'config.missing', 'TELEGRAM_BOT_TOKEN is not configured')
     }
 
     const parsedUser = verifyTelegramInitData(body.init_data, config.telegramBotToken)

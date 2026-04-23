@@ -4,6 +4,16 @@ export default defineNuxtConfig({
   devtools: { enabled: true },
   modules: ['@nuxt/image', '@nuxt/ui'],
   css: ['~/assets/css/main.css', '~/assets/scss/main.scss'],
+  app: {
+    head: {
+      script: [
+        {
+          src: 'https://telegram.org/js/telegram-web-app.js',
+          defer: true
+        }
+      ]
+    }
+  },
   runtimeConfig: {
     sessionSecret: process.env.SESSION_SECRET || '',
     telegramBotToken: process.env.TELEGRAM_BOT_TOKEN || '',
