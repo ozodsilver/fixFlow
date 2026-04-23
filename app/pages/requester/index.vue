@@ -1,16 +1,42 @@
 <script setup lang="ts">
-import type { ServiceDomain } from '~/types/requester'
+import type { RequestStatus, ServiceDomain, ServiceRequest } from '~/types/requester'
 
 const api = useRequesterApi()
 const { t, locale } = useAppI18n()
 
 const loading = ref(true)
 const domains = ref<ServiceDomain[]>([])
+const requests = ref<ServiceRequest[]>([])
 const errorMessage = ref('')
 const creatingRequestDomainId = ref<number | null>(null)
 
 const localizedDomainName = (domain: ServiceDomain) =>
   locale.value === 'ru' ? domain.name_ru : domain.name_uz_cyrl
+
+const statusLabel = (status: RequestStatus) => {
+  const map: Record<RequestStatus, string> = {
+    draft: t('requester.statusDraft'),
+    intake_in_progress: t('requester.statusIntakeInProgress'),
+    ready_for_dispatch: t('requester.statusReadyForDispatch'),
+    dispatched: t('requester.statusDispatched'),
+    in_fulfillment: t('requester.statusInFulfillment'),
+    closed_completed: t('requester.statusClosedCompleted'),
+    closed_canceled_user: t('requester.statusClosedCanceledUser'),
+    closed_canceled_admin: t('requester.statusClosedCanceledAdmin'),
+    closed_unfulfilled: t('requester.statusClosedUnfulfilled')
+  }
+
+  return map[status] || status
+}
+
+const intakeStatuses = new Set<RequestStatus>(['draft', 'intake_in_progress', 'ready_for_dispatch'])
+
+const requestOpenPath = (request: ServiceRequest) =>
+  intakeStatuses.has(request.status)
+    ? `/requester/requests/${request.id}/intake`
+    : `/requester/requests/${request.id}/status`
+
+const topRequests = computed(() => requests.value.slice(0, 5))
 
 const extractRawParam = (input: string, key: string): string | null => {
   const normalized = input.startsWith('?') || input.startsWith('#') ? input.slice(1) : input
@@ -87,8 +113,9 @@ const init = async () => {
 
   try {
     // 1) Try with existing session cookie first.
-    const domainsRes = await api.getServiceDomains()
+    const [domainsRes, requestsRes] = await Promise.all([api.getServiceDomains(), api.getRequests()])
     domains.value = domainsRes.data
+    requests.value = requestsRes.data.items
   }
   catch (error: unknown) {
     const firstCode = (error as { data?: { error?: { code?: string } } })?.data?.error?.code
@@ -98,8 +125,9 @@ const init = async () => {
       try {
         // 2) If session is missing, authenticate via Telegram initData and retry.
         await tryTelegramAuth()
-        const domainsRes = await api.getServiceDomains()
+        const [domainsRes, requestsRes] = await Promise.all([api.getServiceDomains(), api.getRequests()])
         domains.value = domainsRes.data
+        requests.value = requestsRes.data.items
         return
       }
       catch (authError: unknown) {
@@ -153,11 +181,11 @@ onMounted(init)
 </script>
 
 <template>
-  <div class="mx-auto min-h-dvh w-full max-w-md bg-slate-50">
+  <div class="ff-shell min-h-dvh">
     <AppHeader :title="t('common.appName')" :subtitle="t('requester.homeSubtitle')" logo-text="FF" />
 
     <main class="space-y-4 px-4 py-4">
-      <h2 class="text-sm font-semibold text-slate-800">{{ t('requester.homeTitle') }}</h2>
+      <h2 class="text-sm font-bold tracking-tight text-slate-900">{{ t('requester.homeTitle') }}</h2>
 
       <LoadingState v-if="loading" :label="t('common.loading')" />
 
@@ -189,6 +217,41 @@ onMounted(init)
           {{ t('common.loading') }}
         </p>
       </div>
+
+      <section v-if="!loading" class="space-y-2 pt-1">
+        <div class="flex items-center justify-between gap-2">
+          <h3 class="text-sm font-bold tracking-tight text-slate-900">{{ t('requester.myRequestsTitle') }}</h3>
+          <UButton size="xs" color="neutral" variant="ghost" @click="init">
+            {{ t('common.refresh') }}
+          </UButton>
+        </div>
+
+        <EmptyState
+          v-if="topRequests.length === 0"
+          :title="t('requester.noRequestsTitle')"
+          :description="t('requester.noRequestsDescription')"
+        />
+
+        <div v-else class="space-y-2">
+          <button
+            v-for="request in topRequests"
+            :key="request.id"
+            type="button"
+            class="ff-panel ff-rise w-full rounded-2xl p-3 text-left transition hover:-translate-y-0.5 hover:border-emerald-300"
+            @click="navigateTo(requestOpenPath(request))"
+          >
+            <div class="flex items-start justify-between gap-3">
+              <div class="min-w-0">
+                <p class="text-sm font-semibold text-slate-900">{{ request.public_code }}</p>
+                <p class="mt-1 text-xs text-slate-600">{{ statusLabel(request.status) }}</p>
+              </div>
+              <span class="rounded-full bg-emerald-50 px-2 py-1 text-[11px] font-medium text-emerald-700">
+                {{ t('common.open') }}
+              </span>
+            </div>
+          </button>
+        </div>
+      </section>
     </main>
   </div>
 </template>

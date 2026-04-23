@@ -25,15 +25,17 @@ const onLocaleChange = (value: string | number) => {
 </script>
 
 <template>
-  <header class="sticky top-0 z-10 border-b border-slate-200 bg-white/95 backdrop-blur">
-    <div class="mx-auto flex w-full max-w-md items-start gap-3 px-4 py-3">
-      <div class="flex h-10 w-10 items-center justify-center rounded-xl bg-emerald-600 text-sm font-bold text-white">
+  <header class="sticky top-0 z-20 border-b border-white/40 bg-white/70 backdrop-blur-xl">
+    <div class="ff-shell flex items-start gap-3 px-4 py-3">
+      <div
+        class="flex h-10 w-10 items-center justify-center rounded-xl bg-gradient-to-br from-emerald-500 to-teal-600 text-sm font-extrabold text-white shadow-sm"
+      >
         {{ props.logoText }}
       </div>
 
       <div class="min-w-0 flex-1">
-        <h1 class="truncate text-base font-semibold text-slate-900">{{ props.title }}</h1>
-        <p v-if="props.subtitle" class="mt-0.5 text-xs text-slate-600">{{ props.subtitle }}</p>
+        <h1 class="truncate text-base font-extrabold tracking-tight text-slate-900">{{ props.title }}</h1>
+        <p v-if="props.subtitle" class="mt-0.5 text-xs leading-4 text-slate-600">{{ props.subtitle }}</p>
       </div>
 
       <div v-if="props.showLocaleSwitch" class="shrink-0">

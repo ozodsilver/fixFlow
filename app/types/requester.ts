@@ -11,6 +11,20 @@ export type RequestStatus =
   | 'closed_canceled_admin'
   | 'closed_unfulfilled'
 
+export type RequiredFieldKey =
+  | 'service_domain'
+  | 'issue_type'
+  | 'problem_summary'
+  | 'phone'
+  | 'address'
+  | 'landmark'
+  | 'urgency'
+  | 'visit_time'
+  | 'consent'
+
+export type IntakeIntent = 'collect' | 'confirm' | 'ready' | 'offtopic' | 'abuse'
+export type IntakeSender = 'user' | 'ai' | 'system'
+
 export interface ApiErrorPayload {
   code: string
   message: string
@@ -89,10 +103,24 @@ export interface ServiceRequest {
 
 export interface IntakeReply {
   ai_reply: string
-  intent: 'collect' | 'confirm' | 'ready' | 'offtopic' | 'abuse'
-  missing_required: string[]
+  intent: IntakeIntent
+  missing_required: RequiredFieldKey[]
   ready_for_dispatch: boolean
   request: ServiceRequest
+}
+
+export interface IntakeMessage {
+  id: number
+  sender: IntakeSender
+  message_text: string
+  validation_snapshot: {
+    intent?: IntakeIntent
+    missing_required?: RequiredFieldKey[]
+    ready_for_dispatch?: boolean
+  } | null
+  offtopic: boolean
+  abuse: boolean
+  created_at: string
 }
 
 export interface DispatchReply {

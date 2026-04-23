@@ -1,6 +1,13 @@
 :root {
-  --ff-bg: #f8fafc;
-  --ff-text: #0f172a;
+  --ff-bg: #eef2f4;
+  --ff-bg-soft: #f6f9fb;
+  --ff-surface: #ffffff;
+  --ff-text: #13202b;
+  --ff-muted: #526172;
+  --ff-primary: #0f9b76;
+  --ff-primary-strong: #0c7c5f;
+  --ff-border: #d9e2e8;
+  --ff-shadow: 0 10px 30px rgba(10, 32, 56, 0.08);
 }
 
 html,
@@ -10,6 +17,37 @@ body,
 }
 
 body {
-  background: var(--ff-bg);
+  font-family: "Manrope", "Noto Sans", "Segoe UI", sans-serif;
+  background:
+    radial-gradient(1200px 480px at -10% -10%, #dcfce7 0%, transparent 60%),
+    radial-gradient(900px 420px at 110% -20%, #dbeafe 0%, transparent 56%),
+    linear-gradient(180deg, var(--ff-bg-soft) 0%, var(--ff-bg) 100%);
   color: var(--ff-text);
+}
+
+.ff-shell {
+  max-width: 30rem;
+  margin-inline: auto;
+}
+
+.ff-panel {
+  border: 1px solid var(--ff-border);
+  background: var(--ff-surface);
+  box-shadow: var(--ff-shadow);
+}
+
+.ff-rise {
+  animation: ff-rise 260ms ease-out;
+}
+
+@keyframes ff-rise {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
 }

@@ -1,50 +1,159 @@
 <script setup lang="ts">
-import type { IntakeReply, ServiceRequest } from '~/types/requester'
+import type {
+  IntakeIntent,
+  IntakeMessage,
+  RequiredFieldKey,
+  RequestStatus,
+  ServiceDomain,
+  ServiceRequest
+} from '~/types/requester'
 
-const route = useRoute()
-const requestId = computed(() => String(route.params.requestId || ''))
-
-const api = useRequesterApi()
-const { t } = useAppI18n()
-
-const loading = ref(true)
-const sending = ref(false)
-const requestState = ref<ServiceRequest | null>(null)
-const errorMessage = ref('')
-const missingFields = ref<string[]>([])
-const readyForDispatch = ref(false)
-const lastIntent = ref<IntakeReply['intent']>('collect')
-
-interface LocalMessage {
+interface ChatLine {
   id: string
   role: 'user' | 'ai' | 'system'
   text: string
-  time: string
+  at: string
 }
 
-const messages = ref<LocalMessage[]>([])
+const api = useRequesterApi()
+const route = useRoute()
+const { t, locale } = useAppI18n()
 
-const requiredFieldMap: Record<string, string> = {
-  service_domain: t('fields.service_domain'),
-  issue_type: t('fields.issue_type'),
-  problem_summary: t('fields.problem_summary'),
-  phone: t('fields.phone'),
-  address: t('fields.address'),
-  landmark: t('fields.landmark'),
-  urgency: t('fields.urgency'),
-  visit_time: t('fields.visit_time'),
-  consent: t('fields.consent')
+const loading = ref(true)
+const sending = ref(false)
+const confirming = ref(false)
+const dispatching = ref(false)
+
+const request = ref<ServiceRequest | null>(null)
+const domainName = ref('')
+const messages = ref<ChatLine[]>([])
+const missingRequired = ref<RequiredFieldKey[]>([])
+const readyForDispatch = ref(false)
+const lastIntent = ref<IntakeIntent | null>(null)
+const errorMessage = ref('')
+
+const requestId = computed(() => String(route.params.requestId || ''))
+
+const intakeWritableStatuses: RequestStatus[] = ['draft', 'intake_in_progress', 'ready_for_dispatch']
+const intakeWritableStatusSet = new Set<RequestStatus>(intakeWritableStatuses)
+
+const canUseChat = computed(() => {
+  if (!request.value) return false
+  return intakeWritableStatusSet.has(request.value.status)
+})
+
+const canConfirm = computed(() => {
+  if (!request.value || confirming.value || dispatching.value) return false
+  return readyForDispatch.value && request.value.status !== 'dispatched'
+})
+
+const canDispatch = computed(() => {
+  if (!request.value || dispatching.value) return false
+  return request.value.status === 'ready_for_dispatch'
+})
+
+const summaryLabels = computed(() => ({
+  id: t('requester.summaryId'),
+  status: t('requester.summaryStatus'),
+  summary: t('requester.summaryProblem'),
+  address: t('requester.summaryAddress')
+}))
+
+const resolveFieldLabel = (field: RequiredFieldKey) => t(`fields.${field}`)
+
+const makeIdempotencyKey = () => {
+  if (process.client && typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
+    return crypto.randomUUID()
+  }
+  return `${Date.now()}-${Math.random().toString(36).slice(2)}`
 }
 
-const resolveMissingLabel = (field: string) => requiredFieldMap[field] ?? field
-
-const addMessage = (role: 'user' | 'ai' | 'system', text: string) => {
+const pushMessage = (role: ChatLine['role'], text: string) => {
   messages.value.push({
-    id: crypto.randomUUID(),
+    id: makeIdempotencyKey(),
     role,
     text,
-    time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+    at: new Date().toISOString()
   })
+}
+
+const formatTime = (iso: string) =>
+  new Date(iso).toLocaleTimeString(locale.value === 'ru' ? 'ru-RU' : 'uz-Cyrl-UZ', {
+    hour: '2-digit',
+    minute: '2-digit'
+  })
+
+const loadDomain = async (domainId: number) => {
+  try {
+    const domains = await api.getServiceDomains()
+    const selected = domains.data.find((item: ServiceDomain) => item.id === domainId)
+    if (!selected) {
+      domainName.value = `#${domainId}`
+      return
+    }
+
+    domainName.value = locale.value === 'ru' ? selected.name_ru : selected.name_uz_cyrl
+  }
+  catch {
+    domainName.value = `#${domainId}`
+  }
+}
+
+const syncFromRequest = (value: ServiceRequest) => {
+  request.value = value
+  readyForDispatch.value = value.status === 'ready_for_dispatch'
+  if (value.status === 'ready_for_dispatch') {
+    missingRequired.value = []
+  }
+}
+
+const hydrateFromHistory = (history: IntakeMessage[]) => {
+  if (history.length === 0) {
+    messages.value = []
+    lastIntent.value = null
+    if (!readyForDispatch.value) {
+      missingRequired.value = []
+    }
+    return
+  }
+
+  messages.value = history.map((item) => ({
+    id: String(item.id),
+    role: item.sender,
+    text: item.message_text,
+    at: item.created_at
+  }))
+
+  const latestWithSnapshot = [...history].reverse().find((item) => !!item.validation_snapshot)
+  if (!latestWithSnapshot?.validation_snapshot) {
+    return
+  }
+
+  const snapshot = latestWithSnapshot.validation_snapshot
+  if (snapshot.intent) {
+    lastIntent.value = snapshot.intent
+  }
+
+  if (snapshot.ready_for_dispatch === true || request.value?.status === 'ready_for_dispatch') {
+    readyForDispatch.value = true
+    missingRequired.value = []
+    return
+  }
+
+  if (Array.isArray(snapshot.missing_required)) {
+    missingRequired.value = snapshot.missing_required
+  }
+}
+
+const loadIntakeHistory = async () => {
+  if (!request.value) return
+
+  const historyRes = await api.getIntakeMessages(request.value.id)
+  hydrateFromHistory(historyRes.data.items)
+
+  if (messages.value.length === 0) {
+    pushMessage('ai', t('requester.chatNoMessages'))
+  }
 }
 
 const loadRequest = async () => {
@@ -53,11 +162,9 @@ const loadRequest = async () => {
 
   try {
     const result = await api.getRequest(requestId.value)
-    requestState.value = result.data
-
-    if (messages.value.length === 0) {
-      addMessage('system', t('requester.chatHint'))
-    }
+    syncFromRequest(result.data)
+    await loadDomain(result.data.domain_id)
+    await loadIntakeHistory()
   }
   catch (error: unknown) {
     errorMessage.value =
@@ -68,28 +175,33 @@ const loadRequest = async () => {
   }
 }
 
-const sendMessage = async (text: string) => {
-  if (!requestState.value) return
+const submitMessage = async (text: string) => {
+  if (!request.value || !canUseChat.value) return
 
-  addMessage('user', text)
   sending.value = true
+  errorMessage.value = ''
+  const optimisticId = makeIdempotencyKey()
+  messages.value.push({
+    id: optimisticId,
+    role: 'user',
+    text,
+    at: new Date().toISOString()
+  })
 
   try {
-    const result = await api.postIntakeMessage(requestId.value, {
+    const result = await api.postIntakeMessage(request.value.id, {
       text,
-      idempotency_key: crypto.randomUUID()
+      idempotency_key: makeIdempotencyKey()
     })
 
-    const intake = result.data
-    lastIntent.value = intake.intent
-    readyForDispatch.value = intake.ready_for_dispatch
-    missingFields.value = intake.missing_required
-    requestState.value = intake.request
-
-    addMessage('ai', intake.ai_reply)
+    syncFromRequest(result.data.request)
+    missingRequired.value = result.data.missing_required
+    readyForDispatch.value = result.data.ready_for_dispatch
+    lastIntent.value = result.data.intent
+    pushMessage('ai', result.data.ai_reply)
   }
   catch (error: unknown) {
-    addMessage('system', t('common.unexpectedError'))
+    messages.value = messages.value.filter(item => item.id !== optimisticId)
     errorMessage.value =
       (error as { data?: { error?: { message?: string } } })?.data?.error?.message || t('common.unexpectedError')
   }
@@ -99,27 +211,47 @@ const sendMessage = async (text: string) => {
 }
 
 const confirmIntake = async () => {
-  try {
-    const response = await api.confirmIntake(requestId.value)
-    missingFields.value = response.data.missing_required
-    readyForDispatch.value = response.data.status === 'ready_for_dispatch'
+  if (!request.value || !canConfirm.value) return
 
-    await loadRequest()
+  confirming.value = true
+  errorMessage.value = ''
+
+  try {
+    const result = await api.confirmIntake(request.value.id)
+    request.value = {
+      ...request.value,
+      status: result.data.status
+    }
+    readyForDispatch.value = true
+    missingRequired.value = []
+    lastIntent.value = 'confirm'
+    pushMessage('system', t('requester.confirmedIntake'))
   }
   catch (error: unknown) {
     errorMessage.value =
       (error as { data?: { error?: { message?: string } } })?.data?.error?.message || t('common.unexpectedError')
+  }
+  finally {
+    confirming.value = false
   }
 }
 
-const dispatchRequest = async () => {
+const dispatch = async () => {
+  if (!request.value || !canDispatch.value) return
+
+  dispatching.value = true
+  errorMessage.value = ''
+
   try {
-    await api.dispatchRequest(requestId.value, crypto.randomUUID())
-    await navigateTo(`/requester/requests/${requestId.value}/status`)
+    await api.dispatchRequest(request.value.id, makeIdempotencyKey())
+    await navigateTo(`/requester/requests/${request.value.id}/status`)
   }
   catch (error: unknown) {
     errorMessage.value =
       (error as { data?: { error?: { message?: string } } })?.data?.error?.message || t('common.unexpectedError')
+  }
+  finally {
+    dispatching.value = false
   }
 }
 
@@ -127,65 +259,84 @@ onMounted(loadRequest)
 </script>
 
 <template>
-  <div class="mx-auto flex min-h-dvh w-full max-w-md flex-col bg-slate-50">
-    <AppHeader :title="t('requester.chatTitle')" :subtitle="requestState?.public_code || ''" logo-text="FF" />
+  <div class="ff-shell flex min-h-dvh flex-col">
+    <AppHeader :title="t('requester.chatTitle')" :subtitle="t('requester.chatHint')" logo-text="FF" />
 
-    <main class="flex-1 space-y-3 overflow-y-auto px-4 py-4">
-      <LoadingState v-if="loading" :label="t('common.loading')" />
+    <main class="flex-1 space-y-4 px-4 py-4">
+      <LoadingState v-if="loading" :label="t('requester.loadingRequest')" />
 
       <ErrorState
-        v-else-if="errorMessage && !requestState"
+        v-else-if="!request && errorMessage"
         :title="t('common.unexpectedError')"
         :message="errorMessage"
         :retry-label="t('common.retry')"
         @retry="loadRequest"
       />
 
-      <template v-else>
-        <RequestSummaryCard
-          v-if="requestState"
-          :title="t('requester.summaryTitle')"
-          :request="requestState"
-        />
+      <template v-else-if="request">
+        <section class="ff-panel ff-rise rounded-2xl p-3">
+          <p class="text-xs font-semibold uppercase tracking-wide text-slate-500">{{ t('requester.domainLabel') }}</p>
+          <p class="mt-1 text-sm font-bold tracking-tight text-slate-900">{{ domainName }}</p>
+        </section>
+
+        <RequestSummaryCard :title="t('requester.summaryTitle')" :request="request" :labels="summaryLabels" />
 
         <IntakeProgressHint
-          v-if="missingFields.length > 0"
-          :missing-fields="missingFields"
+          v-if="missingRequired.length > 0"
           :title="t('requester.missingTitle')"
-          :resolve-label="resolveMissingLabel"
+          :missing-fields="missingRequired"
+          :resolve-label="resolveFieldLabel"
         />
 
-        <div v-if="lastIntent === 'offtopic'" class="rounded-2xl border border-rose-200 bg-rose-50 p-3 text-sm text-rose-800">
-          {{ t('requester.offtopicRefusal') }}
-        </div>
+        <section v-if="lastIntent === 'offtopic'" class="rounded-2xl border border-rose-200 bg-rose-50 p-3">
+          <p class="text-xs font-semibold uppercase tracking-wide text-rose-700">{{ t('requester.offtopicRefusal') }}</p>
+        </section>
 
-        <div v-if="readyForDispatch" class="rounded-2xl border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-800">
-          {{ t('requester.readyToDispatch') }}
-        </div>
+        <section v-if="readyForDispatch" class="ff-rise rounded-2xl border border-emerald-200 bg-emerald-50/90 p-3">
+          <p class="text-sm font-bold text-emerald-800">{{ t('requester.readyToDispatch') }}</p>
+          <div class="mt-3 flex flex-wrap gap-2">
+            <UButton :loading="confirming" :disabled="!canConfirm" color="neutral" variant="soft" @click="confirmIntake">
+              {{ t('requester.confirmIntake') }}
+            </UButton>
+            <UButton :loading="dispatching" :disabled="!canDispatch" color="primary" @click="dispatch">
+              {{ t('requester.dispatch') }}
+            </UButton>
+            <UButton color="neutral" variant="ghost" @click="navigateTo(`/requester/requests/${request.id}/status`)">
+              {{ t('requester.goStatus') }}
+            </UButton>
+          </div>
+        </section>
 
-        <section class="space-y-2">
-          <ChatMessageBubble
-            v-for="message in messages"
-            :key="message.id"
-            :role="message.role"
-            :text="message.text"
-            :time="message.time"
-          />
+        <ErrorState
+          v-if="errorMessage"
+          :title="t('common.unexpectedError')"
+          :message="errorMessage"
+          :retry-label="t('common.retry')"
+          @retry="loadRequest"
+        />
+
+        <section class="ff-panel rounded-2xl p-3">
+          <p class="text-xs font-bold uppercase tracking-wide text-slate-500">{{ t('requester.chatTitle') }}</p>
+
+          <div class="mt-2 max-h-[45dvh] min-h-32 space-y-2 overflow-y-auto rounded-xl bg-slate-50 p-2">
+            <ChatMessageBubble
+              v-for="line in messages"
+              :key="line.id"
+              :role="line.role === 'system' ? 'ai' : line.role"
+              :text="line.text"
+              :time="formatTime(line.at)"
+            />
+          </div>
         </section>
       </template>
     </main>
 
-    <section class="border-t border-slate-200 bg-white px-4 py-3">
-      <div class="mx-auto flex w-full max-w-md gap-2">
-        <UButton class="flex-1" variant="soft" color="neutral" @click="confirmIntake">
-          {{ t('requester.confirmIntake') }}
-        </UButton>
-        <UButton class="flex-1" :disabled="!readyForDispatch" @click="dispatchRequest">
-          {{ t('requester.dispatch') }}
-        </UButton>
-      </div>
-    </section>
-
-    <ChatComposer :placeholder="t('requester.composerPlaceholder')" :send-label="t('common.send')" :loading="sending" @send="sendMessage" />
+    <ChatComposer
+      :placeholder="canUseChat ? t('requester.composerPlaceholder') : t('requester.composerDisabled')"
+      :send-label="t('common.send')"
+      :loading="sending"
+      :disabled="!canUseChat"
+      @send="submitMessage"
+    />
   </div>
 </template>

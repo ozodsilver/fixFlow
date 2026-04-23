@@ -15,9 +15,14 @@ const emit = defineEmits<{ retry: [] }>()
 </script>
 
 <template>
-  <div class="rounded-2xl border border-rose-200 bg-rose-50 p-4">
-    <p class="text-sm font-semibold text-rose-800">{{ props.title }}</p>
-    <p v-if="props.message" class="mt-1 text-xs text-rose-700">{{ props.message }}</p>
+  <div class="ff-rise rounded-2xl border border-rose-200 bg-rose-50/90 p-4">
+    <div class="flex items-start gap-2">
+      <UIcon name="i-lucide-alert-triangle" class="mt-0.5 size-4 text-rose-700" />
+      <div class="min-w-0">
+        <p class="text-sm font-bold text-rose-900">{{ props.title }}</p>
+        <p v-if="props.message" class="mt-1 text-xs leading-5 text-rose-800">{{ props.message }}</p>
+      </div>
+    </div>
     <UButton
       v-if="props.retryLabel"
       size="xs"
