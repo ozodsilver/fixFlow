@@ -12,6 +12,7 @@ interface IntakeBody {
 const allowedStatuses = ['draft', 'intake_in_progress', 'ready_for_dispatch']
 
 export default defineEventHandler(async (event) => {
+  const config = useRuntimeConfig(event)
   const requestId = getRouterParam(event, 'requestId')
   const body = await readBody<IntakeBody>(event)
 
@@ -38,23 +39,29 @@ export default defineEventHandler(async (event) => {
     field_patch: {}
   })
 
-  const intakeResult = analyzeIntakeMessage({
-    text,
-    locale: request.locale,
-    current: {
-      domain_id: request.domain_id,
-      issue_tag_id: request.issue_tag_id,
-      issue_custom: request.issue_custom,
-      problem_summary: request.problem_summary,
-      phone_e164: request.phone_e164,
-      address_text: request.address_text,
-      landmark_text: request.landmark_text,
-      urgency: request.urgency,
-      visit_time_mode: request.visit_time_mode,
-      visit_time_at: request.visit_time_at,
-      consent_share: request.consent_share
+  const intakeResult = await analyzeIntakeMessage(
+    {
+      text,
+      locale: request.locale,
+      current: {
+        domain_id: request.domain_id,
+        issue_tag_id: request.issue_tag_id,
+        issue_custom: request.issue_custom,
+        problem_summary: request.problem_summary,
+        phone_e164: request.phone_e164,
+        address_text: request.address_text,
+        landmark_text: request.landmark_text,
+        urgency: request.urgency,
+        visit_time_mode: request.visit_time_mode,
+        visit_time_at: request.visit_time_at,
+        consent_share: request.consent_share
+      }
+    },
+    {
+      groqApiKey: config.groqApiKey,
+      groqModel: config.groqModel
     }
-  })
+  )
 
   const merged = {
     domain_id: request.domain_id,
