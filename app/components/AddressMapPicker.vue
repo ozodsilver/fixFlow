@@ -44,6 +44,41 @@ const canSave = computed(() =>
   !!addressText.value.trim() && lat.value !== null && lng.value !== null && !props.loading
 )
 
+const formatResolvedAddress = (payload: any) => {
+  const addr = payload?.address || {}
+  const streetName = addr.road || addr.pedestrian || addr.footway || addr.path || addr.residential || addr.cycleway || ''
+  const street = [streetName, addr.house_number].filter(Boolean).join(' ').trim()
+  const district = addr.suburb || addr.city_district || addr.neighbourhood || addr.county || ''
+  const region = addr.state || addr.region || ''
+  const city = addr.city || addr.town || addr.village || ''
+
+  const parts = [street, district, city, region].filter(Boolean)
+  if (parts.length > 0) return parts.join(', ')
+
+  const display = payload?.display_name
+  if (typeof display === 'string' && display.trim()) return display.trim()
+  return ''
+}
+
+const reverseGeocode = async (point: { lat: number; lng: number }) => {
+  const params = new URLSearchParams({
+    format: 'jsonv2',
+    lat: String(point.lat),
+    lon: String(point.lng),
+    'accept-language': 'uz,ru'
+  })
+
+  const response = await fetch(`https://nominatim.openstreetmap.org/reverse?${params.toString()}`, {
+    headers: {
+      Accept: 'application/json'
+    }
+  })
+
+  if (!response.ok) throw new Error('reverse_geocode_failed')
+  const data = await response.json()
+  return formatResolvedAddress(data)
+}
+
 const loadLeaflet = async () => {
   if ((window as any).L) return (window as any).L
 
@@ -77,7 +112,7 @@ const loadLeaflet = async () => {
   return (window as any).L
 }
 
-const placeMarker = (L: any, point: { lat: number; lng: number }) => {
+const placeMarker = async (L: any, point: { lat: number; lng: number }) => {
   if (!map) return
   locateError.value = ''
   lat.value = Number(point.lat.toFixed(6))
@@ -90,7 +125,13 @@ const placeMarker = (L: any, point: { lat: number; lng: number }) => {
     marker.setLatLng([lat.value, lng.value])
   }
 
-  addressText.value = `${lat.value}, ${lng.value}`
+  try {
+    const resolvedAddress = await reverseGeocode(point)
+    addressText.value = resolvedAddress || `${lat.value}, ${lng.value}`
+  }
+  catch {
+    addressText.value = `${lat.value}, ${lng.value}`
+  }
 
   const text = addressText.value.trim()
   if (text) {
@@ -141,13 +182,13 @@ const locateMe = () => {
 
   locating.value = true
   navigator.geolocation.getCurrentPosition(
-    (pos) => {
+    async (pos) => {
       const next = {
         lat: pos.coords.latitude,
         lng: pos.coords.longitude
       }
       const L = (window as any).L
-      placeMarker(L, next)
+      await placeMarker(L, next)
       map.setView([next.lat, next.lng], 16)
       locating.value = false
     },
@@ -181,11 +222,11 @@ onMounted(async () => {
   }).addTo(map)
 
   if (props.initialLat !== null && props.initialLng !== null) {
-    placeMarker(L, { lat: props.initialLat, lng: props.initialLng })
+    void placeMarker(L, { lat: props.initialLat, lng: props.initialLng })
   }
 
   map.on('click', (e: any) => {
-    placeMarker(L, e.latlng)
+    void placeMarker(L, e.latlng)
   })
 
   ready.value = true
@@ -193,27 +234,31 @@ onMounted(async () => {
 </script>
 
 <template>
-  <section class="ff-panel-soft ff-rise rounded-3xl p-3">
+  <section class="ff-rise rounded-2xl border border-slate-200 bg-white p-3 shadow-sm">
     <p class="text-xs font-bold uppercase tracking-wide text-slate-500">{{ props.label }}</p>
-    <div ref="mapEl" class="mt-2 h-44 w-full overflow-hidden rounded-2xl border border-slate-200" />
-    <div v-if="ready && lat !== null && lng !== null" class="mt-2 text-xs text-slate-600">
+    <div ref="mapEl" class="mt-2 h-44 w-full overflow-hidden rounded-xl border border-slate-200" />
+    <div v-if="ready && lat !== null && lng !== null" class="mt-2 text-xs text-slate-500">
       {{ lat }}, {{ lng }}
     </div>
-    <UInput v-model="addressText" class="mt-2" :placeholder="props.label" />
-    <UButton
-      class="mt-2 mr-2"
-      color="neutral"
-      variant="soft"
-      :loading="locating"
-      :disabled="props.loading || !ready"
-      @click="locateMe"
-    >
-      {{ props.locateLabel }}
-    </UButton>
-    <UButton class="mt-2" color="primary" :disabled="!canSave" :loading="props.loading" @click="saveAddress">
-      {{ props.saveLabel }}
-    </UButton>
-    <p v-if="locateError" class="mt-2 text-xs font-medium text-rose-700">
+    <UInput v-model="addressText" class="mt-2 w-full" :placeholder="props.label" />
+    <p v-if="addressText" class="mt-2 break-words text-xs leading-5 text-slate-600">
+      {{ addressText }}
+    </p>
+    <div class="mt-2 flex flex-wrap gap-2">
+      <UButton
+        color="neutral"
+        variant="soft"
+        :loading="locating"
+        :disabled="props.loading || !ready"
+        @click="locateMe"
+      >
+        {{ props.locateLabel }}
+      </UButton>
+      <UButton color="primary" :disabled="!canSave" :loading="props.loading" @click="saveAddress">
+        {{ props.saveLabel }}
+      </UButton>
+    </div>
+    <p v-if="locateError" class="mt-2 text-xs font-medium text-rose-600">
       {{ locateError }}
     </p>
   </section>

@@ -1,0 +1,43 @@
+- generic [active] [ref=e1]:
+  - generic [ref=e3]:
+    - status [ref=e4]
+    - generic [ref=e5]:
+      - banner [ref=e6]:
+        - generic [ref=e8]:
+          - button "Go home" [ref=e9]:
+            - img "fixFlow logo" [ref=e10]
+          - generic [ref=e11]:
+            - heading "FixFlow" [level=1] [ref=e12]
+            - paragraph [ref=e13]: Муаммоингизни тез ва аниқ юбориш учун хизмат турини танланг
+          - generic [ref=e14]:
+            - button "Ўз" [ref=e15]
+            - button "Ру" [ref=e16]
+      - main [ref=e17]:
+        - generic [ref=e22]:
+          - paragraph [ref=e23]: Хизмат турини танланг
+          - paragraph [ref=e24]: Муаммоингизни тез ва аниқ юбориш учун хизмат турини танланг
+        - paragraph [ref=e30]: Юкланмоқда...
+      - navigation "Requester navigation" [ref=e33]:
+        - generic [ref=e34]:
+          - button "Асосий" [ref=e35]:
+            - generic [ref=e37]: Асосий
+          - button "Рўйхат" [ref=e38]:
+            - generic [ref=e40]: Рўйхат
+          - button "Янги" [ref=e41]:
+            - generic [ref=e44]: Янги
+          - button "Чат" [disabled] [ref=e45]:
+            - generic [ref=e47]: Чат
+          - button "Ҳолат" [disabled] [ref=e48]:
+            - generic [ref=e50]: Ҳолат
+  - region "Notifications (F8)":
+    - list
+  - generic:
+    - img
+  - generic [ref=e51]:
+    - button "Toggle Nuxt DevTools" [ref=e52] [cursor=pointer]:
+      - img [ref=e53]
+    - generic "Page load time" [ref=e56]:
+      - generic [ref=e57]: "13"
+      - generic [ref=e58]: ms
+    - button "Toggle Component Inspector" [ref=e60] [cursor=pointer]:
+      - img [ref=e61]

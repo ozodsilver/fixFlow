@@ -13,6 +13,34 @@ interface StructuredBody {
   address_lng?: number
 }
 
+function buildClaimButton(config: ReturnType<typeof useRuntimeConfig>, dispatchId: string) {
+  const startApp = encodeURIComponent(`dispatch_${dispatchId}`)
+  const botUsername = String(config.telegramBotUsername || '').trim().replace(/^@/, '')
+  const miniAppShortName = String(config.telegramMiniAppShortName || '').trim()
+
+  const tMeDirectUrl =
+    botUsername && miniAppShortName ? `https://t.me/${botUsername}/${miniAppShortName}?startapp=${startApp}` : undefined
+  const tMeMainUrl = botUsername ? `https://t.me/${botUsername}?startapp=${startApp}` : undefined
+
+  if (tMeDirectUrl) {
+    return {
+      url: tMeDirectUrl
+    }
+  }
+  if (tMeMainUrl) {
+    return {
+      url: tMeMainUrl
+    }
+  }
+  if (config.miniAppBaseUrl) {
+    const base = String(config.miniAppBaseUrl).replace(/\/+$/, '')
+    return {
+      url: `${base}/master/dispatches/${dispatchId}?dispatch_id=${dispatchId}`
+    }
+  }
+  return null
+}
+
 function normalizePhone(raw: string): string | null {
   const clean = raw.replace(/[^\d+]/g, '')
   if (!clean) return null
@@ -29,16 +57,11 @@ export default defineEventHandler(async (event) => {
   }
 
   const body = await readBody<StructuredBody>(event)
-  const summary = body.problem_summary?.trim()
   const visitTimeAtRaw = body.visit_time_at?.trim()
   const phone = body.phone?.trim()
   const addressText = body.address_text?.trim()
   const lat = body.address_lat
   const lng = body.address_lng
-
-  if (!summary || summary.length < 8) {
-    apiError(422, 'validation.failed', 'problem_summary is required')
-  }
   if (!visitTimeAtRaw) {
     apiError(422, 'validation.failed', 'visit_time_at is required')
   }
@@ -63,6 +86,10 @@ export default defineEventHandler(async (event) => {
   }
 
   const { request } = await requireOwnedRequest(event, requestId)
+  const summary = body.problem_summary?.trim() || request.problem_summary?.trim() || ''
+  if (summary.length < 8) {
+    apiError(422, 'validation.failed', 'problem_summary is required')
+  }
   const supabase = getSupabaseAdmin(event)
   const config = useRuntimeConfig(event)
 
@@ -115,23 +142,19 @@ export default defineEventHandler(async (event) => {
   const previewText = await buildDispatchPreviewText(event, {
     public_code: updatedRequest.public_code,
     domain_id: updatedRequest.domain_id,
-    issue_custom: updatedRequest.issue_custom,
     problem_summary: updatedRequest.problem_summary,
-    urgency: updatedRequest.urgency,
     visit_time_mode: updatedRequest.visit_time_mode,
     visit_time_at: updatedRequest.visit_time_at,
     locale: updatedRequest.locale
   })
 
-  const claimUrl = config.miniAppBaseUrl
-    ? `${String(config.miniAppBaseUrl).replace(/\/+$/, '')}/master/dispatches/${dispatch.id}`
-    : ''
+  const claimButton = buildClaimButton(config, dispatch.id)
   const claimButtonText = updatedRequest.locale === 'ru' ? 'Принять заказ' : 'Буюртмани қабул қилиш'
   const sent = await sendTelegramDispatchMessage(
     config.telegramBotToken,
     Number(config.telegramMastersGroupId),
     previewText,
-    claimUrl ? { text: claimButtonText, url: claimUrl } : undefined
+    claimButton ? { text: claimButtonText, ...claimButton } : undefined
   )
   if (!sent.ok) {
     await supabase.from('dispatch_records').update({ status: 'failed_send' }).eq('id', dispatch.id)

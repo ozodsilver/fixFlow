@@ -4,7 +4,7 @@ type MessageTree = Record<string, string | MessageTree>
 
 const uzCyrl: MessageTree = {
   common: {
-    appName: 'FixFlow',
+    appName: 'HGS',
     loading: 'Юкланмоқда...',
     retry: 'Қайта уриниш',
     refresh: 'Янгилаш',
@@ -37,8 +37,8 @@ const uzCyrl: MessageTree = {
     openChat: 'Мурожаатни бошлаш',
     noDomains: 'Хизмат турлари ҳозирча мавжуд эмас',
     chatTitle: 'Мурожаат чати',
-    chatHint: 'AI саволингизга жавоб беради ва мурожаат маълумотини йиғади',
-    chatNoMessages: 'Муаммони ёзинг, AI керакли маълумотларни босқичма-босқич сўрайди.',
+    chatHint: 'Бу ерда мурожаат учун керакли маълумотларни босқичма-босқич киритасиз',
+    chatNoMessages: 'Муаммони ёзинг, сиздан керакли маълумотлар навбат билан сўралади.',
     statusTitle: 'Мурожаат ҳолати',
     summaryTitle: 'Қисқача маълумот',
     summaryId: 'Код',
@@ -65,7 +65,7 @@ const uzCyrl: MessageTree = {
     mapAddressSave: 'Манзилни сақлаш',
     mapLocateMe: 'Мен турган жой',
     formPhone: 'Телефон рақами',
-    formVisitTime: 'Қачон келиш керак',
+    formVisitTime: 'Ташриф вақти (сана ва соат)',
     formProblem: 'Муаммо тавсифи',
     formSubmit: 'Мастерга юбориш',
     formAddressRequired: 'Аввал харитадан манзилни сақланг.',
@@ -96,7 +96,7 @@ const uzCyrl: MessageTree = {
 
 const ru: MessageTree = {
   common: {
-    appName: 'FixFlow',
+    appName: 'HGS',
     loading: 'Загрузка...',
     retry: 'Повторить',
     refresh: 'Обновить',
@@ -129,8 +129,8 @@ const ru: MessageTree = {
     openChat: 'Начать заявку',
     noDomains: 'Типы услуг пока не добавлены',
     chatTitle: 'Чат заявки',
-    chatHint: 'AI отвечает на вопросы и параллельно собирает заявку',
-    chatNoMessages: 'Опишите проблему, AI пошагово соберет обязательные данные.',
+    chatHint: 'Здесь вы пошагово заполняете данные для заявки',
+    chatNoMessages: 'Опишите проблему, обязательные данные будут запрошены по шагам.',
     statusTitle: 'Статус заявки',
     summaryTitle: 'Краткая информация',
     summaryId: 'Код',

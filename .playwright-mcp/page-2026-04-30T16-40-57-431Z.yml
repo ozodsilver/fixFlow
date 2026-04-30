@@ -1,0 +1,16 @@
+- generic [ref=e4]:
+  - banner [ref=e5]:
+    - generic [ref=e7]:
+      - button "Go home" [ref=e8]:
+        - img "fixFlow logo" [ref=e9]
+      - generic [ref=e10]:
+        - heading "FixFlow" [level=1] [ref=e11]
+        - paragraph [ref=e12]: Муаммоингизни тез ва аниқ юбориш учун хизмат турини танланг
+      - generic [ref=e13]:
+        - button "Ўз" [ref=e14]
+        - button "Ру" [ref=e15]
+  - main [ref=e16]:
+    - generic [ref=e21]:
+      - paragraph [ref=e22]: Хизмат турини танланг
+      - paragraph [ref=e23]: Муаммоингизни тез ва аниқ юбориш учун хизмат турини танланг
+    - paragraph [ref=e29]: Юкланмоқда...

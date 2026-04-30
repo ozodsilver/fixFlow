@@ -4,29 +4,10 @@ import { getSupabaseAdmin } from './supabase-admin'
 interface DispatchPreviewInput {
   public_code: string
   domain_id: number
-  issue_custom: string | null
   problem_summary: string | null
-  urgency: 'low' | 'normal' | 'high' | 'emergency' | null
   visit_time_mode: 'asap' | 'scheduled' | null
   visit_time_at: string | null
   locale: 'uz_cyrl' | 'ru'
-}
-
-function urgencyLabel(value: DispatchPreviewInput['urgency'], locale: DispatchPreviewInput['locale']) {
-  const uz = {
-    low: 'Паст',
-    normal: 'Ўртача',
-    high: 'Юқори',
-    emergency: 'Фавқулодда'
-  }
-  const ru = {
-    low: 'Низкая',
-    normal: 'Обычная',
-    high: 'Высокая',
-    emergency: 'Аварийная'
-  }
-  if (!value) return locale === 'ru' ? 'Не указано' : 'Кўрсатилмаган'
-  return locale === 'ru' ? ru[value] : uz[value]
 }
 
 function visitTimeLabel(mode: DispatchPreviewInput['visit_time_mode'], at: string | null, locale: DispatchPreviewInput['locale']) {
@@ -62,23 +43,19 @@ async function getDomainName(event: H3Event, domainId: number, locale: DispatchP
 export async function buildDispatchPreviewText(event: H3Event, input: DispatchPreviewInput) {
   const domainName = await getDomainName(event, input.domain_id, input.locale)
   const intro = input.locale === 'ru' ? 'Новая заявка' : 'Янги мурожаат'
-  const issueTitle = input.locale === 'ru' ? 'Тип проблемы' : 'Муаммо тури'
   const summaryTitle = input.locale === 'ru' ? 'Кратко' : 'Қисқача'
-  const urgencyTitle = input.locale === 'ru' ? 'Срочность' : 'Шошилинчлик'
   const timeTitle = input.locale === 'ru' ? 'Клиент ждет мастера' : 'Мурожаатчи мастерни кутади'
   const privacyNote =
     input.locale === 'ru'
-      ? 'Контакты и точный адрес откроются только после успешного claim.'
-      : 'Телефон ва аниқ манзил фақат муваффақиятли claimдан кейин очилади.'
+      ? 'Телефон и точный адрес откроются только после успешного принятия заказа.'
+      : 'Телефон ва аниқ манзил буюртма муваффақиятли қабул қилингандан кейин очилади.'
 
   return [
     `📌 ${intro}: ${input.public_code}`,
-    `${input.locale === 'ru' ? 'Услуга' : 'Хизмат'}: ${domainName}`,
-    `${issueTitle}: ${input.issue_custom || (input.locale === 'ru' ? 'Не указано' : 'Кўрсатилмаган')}`,
-    `${summaryTitle}: ${input.problem_summary || (input.locale === 'ru' ? 'Не указано' : 'Кўрсатилмаган')}`,
-    `${urgencyTitle}: ${urgencyLabel(input.urgency, input.locale)}`,
-    `${timeTitle}: ${visitTimeLabel(input.visit_time_mode, input.visit_time_at, input.locale)}`,
-    `ℹ️ ${privacyNote}`
+    `🛠️ ${input.locale === 'ru' ? 'Услуга' : 'Хизмат'}: ${domainName}`,
+    `📝 ${summaryTitle}: ${input.problem_summary || (input.locale === 'ru' ? 'Не указано' : 'Кўрсатилмаган')}`,
+    `⏰ ${timeTitle}: ${visitTimeLabel(input.visit_time_mode, input.visit_time_at, input.locale)}`,
+    `🔒 ${privacyNote}`
   ].join('\n')
 }
 
@@ -86,32 +63,56 @@ export async function sendTelegramDispatchMessage(
   botToken: string,
   groupId: number,
   text: string,
-  button?: { text: string; url: string }
+  button?: { text: string; url?: string; webAppUrl?: string }
 ): Promise<{ messageId: number | null; ok: boolean; error?: string }> {
-  const payloadBody: Record<string, unknown> = {
-    chat_id: groupId,
-    text
-  }
-  if (button?.text && button?.url) {
-    payloadBody.reply_markup = {
-      inline_keyboard: [[{ text: button.text, url: button.url }]]
+  const sendOnce = async (inlineButton?: Record<string, unknown>) => {
+    const payloadBody: Record<string, unknown> = {
+      chat_id: groupId,
+      text
     }
+    if (inlineButton) {
+      payloadBody.reply_markup = { inline_keyboard: [[inlineButton]] }
+    }
+
+    const response = await fetch(`https://api.telegram.org/bot${botToken}/sendMessage`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payloadBody)
+    })
+
+    const payload = await response.json() as { ok?: boolean; result?: { message_id?: number }; description?: string }
+    if (!response.ok || !payload.ok) {
+      return { ok: false as const, error: payload.description || `HTTP ${response.status}` }
+    }
+    return { ok: true as const, messageId: payload.result?.message_id ?? null }
   }
 
-  const response = await fetch(`https://api.telegram.org/bot${botToken}/sendMessage`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(payloadBody)
-  })
-
-  if (!response.ok) {
-    return { ok: false, messageId: null, error: `HTTP ${response.status}` }
+  if (!button?.text || (!button.webAppUrl && !button.url)) {
+    const sent = await sendOnce()
+    return sent.ok
+      ? { ok: true, messageId: sent.messageId }
+      : { ok: false, messageId: null, error: sent.error }
   }
 
-  const payload = await response.json() as { ok?: boolean; result?: { message_id?: number }; description?: string }
-  if (!payload.ok) {
-    return { ok: false, messageId: null, error: payload.description || 'Telegram API error' }
+  if (button.webAppUrl) {
+    const webAppSent = await sendOnce({ text: button.text, web_app: { url: button.webAppUrl } })
+    if (webAppSent.ok) {
+      return { ok: true, messageId: webAppSent.messageId }
+    }
+
+    if (button.url) {
+      const urlSent = await sendOnce({ text: button.text, url: button.url })
+      if (urlSent.ok) {
+        return { ok: true, messageId: urlSent.messageId }
+      }
+      return { ok: false, messageId: null, error: `${webAppSent.error}; fallback failed: ${urlSent.error}` }
+    }
+
+    return { ok: false, messageId: null, error: webAppSent.error }
   }
 
-  return { ok: true, messageId: payload.result?.message_id ?? null }
+  const urlSent = await sendOnce({ text: button.text, url: button.url })
+  return urlSent.ok
+    ? { ok: true, messageId: urlSent.messageId }
+    : { ok: false, messageId: null, error: urlSent.error }
 }

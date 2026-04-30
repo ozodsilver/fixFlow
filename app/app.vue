@@ -1,6 +1,6 @@
 <template>
   <UApp>
-    <div class="min-h-dvh text-slate-900">
+    <div class="min-h-dvh text-[#2b2853]">
       <NuxtRouteAnnouncer />
       <NuxtPage />
     </div>

@@ -3,11 +3,11 @@ const props = defineProps<{ title: string; description?: string }>()
 </script>
 
 <template>
-  <div class="ff-panel-soft ff-rise rounded-3xl border-dashed p-6 text-center">
-    <div class="mx-auto mb-2 flex h-9 w-9 items-center justify-center rounded-xl bg-gradient-to-br from-slate-100 to-cyan-50 text-slate-500">
+  <div class="ff-panel-soft ff-rise rounded-[28px] border-dashed p-6 text-center">
+    <div class="ff-icon-tile mx-auto mb-2 flex h-10 w-10 items-center justify-center rounded-2xl">
       <UIcon name="i-lucide-inbox" class="size-4" />
     </div>
-    <p class="text-sm font-bold text-slate-800">{{ props.title }}</p>
-    <p v-if="props.description" class="mt-1 text-xs leading-5 text-slate-500">{{ props.description }}</p>
+    <p class="text-sm font-bold text-[#2b2853]">{{ props.title }}</p>
+    <p v-if="props.description" class="mt-1 text-xs leading-5 text-[#7d78a6]">{{ props.description }}</p>
   </div>
 </template>

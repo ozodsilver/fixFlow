@@ -31,6 +31,8 @@ export default defineNuxtConfig({
     telegramBotToken: process.env.TELEGRAM_BOT_TOKEN || '',
     telegramMastersGroupId: process.env.TELEGRAM_MASTERS_GROUP_ID || '0',
     miniAppBaseUrl: process.env.MINI_APP_BASE_URL || '',
+    telegramBotUsername: process.env.TELEGRAM_BOT_USERNAME || '',
+    telegramMiniAppShortName: process.env.TELEGRAM_MINI_APP_SHORT_NAME || '',
     supabaseServiceRoleKey: process.env.SUPABASE_SERVICE_ROLE_KEY || '',
     geminiApiKey: process.env.GEMINI_API_KEY || '',
     geminiModel: process.env.GEMINI_MODEL || 'gemini-2.0-flash',

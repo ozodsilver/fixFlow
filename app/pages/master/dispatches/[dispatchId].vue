@@ -12,6 +12,7 @@ const dispatch = ref<{
   status: string
   expires_at: string | null
   claimed_by_master_id: string | null
+  is_claimed_by_current_master: boolean
   request: {
     public_code: string
     issue_custom: string | null
@@ -27,6 +28,8 @@ const dispatch = ref<{
 
 const canClaim = computed(() => dispatch.value?.status === 'open')
 const isClaimed = computed(() => dispatch.value?.status === 'claimed')
+const isClaimedByMe = computed(() => !!dispatch.value?.is_claimed_by_current_master)
+const isClaimedByOther = computed(() => isClaimed.value && !isClaimedByMe.value)
 
 const dispatchId = computed(() => String(route.params.dispatchId || ''))
 
@@ -187,8 +190,10 @@ onMounted(loadDispatch)
           Buyurtmani qabul qilish
         </UButton>
 
-        <p v-if="successMessage" class="text-sm font-semibold text-emerald-700">{{ successMessage }}</p>
-        <p v-if="isClaimed" class="text-sm font-semibold text-rose-700">Bu buyurtma boshqa masterga berildi.</p>
+        <p v-if="successMessage || isClaimedByMe" class="text-sm font-semibold text-emerald-700">
+          {{ successMessage || 'Buyurtma qabul qilindi.' }}
+        </p>
+        <p v-if="isClaimedByOther" class="text-sm font-semibold text-rose-700">Bu buyurtma boshqa masterga berildi.</p>
       </template>
     </main>
   </div>

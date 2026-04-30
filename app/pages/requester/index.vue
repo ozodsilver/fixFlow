@@ -30,11 +30,11 @@ const statusLabel = (status: RequestStatus) => {
 }
 
 const statusToneClass = (status: RequestStatus) => {
-  if (status === 'draft' || status === 'intake_in_progress') return 'border border-indigo-200 bg-indigo-50 text-indigo-800'
-  if (status === 'ready_for_dispatch' || status === 'dispatched') return 'border border-sky-200 bg-sky-50 text-sky-800'
-  if (status === 'in_fulfillment') return 'bg-emerald-100 text-emerald-800'
-  if (status === 'closed_completed') return 'bg-teal-100 text-teal-800'
-  return 'border border-slate-200 bg-slate-50 text-slate-700'
+  if (status === 'draft' || status === 'intake_in_progress') return 'border border-[#ffd3b0] bg-[#fff1df] text-[#9b673d]'
+  if (status === 'ready_for_dispatch' || status === 'dispatched') return 'border border-[#cfc5ff] bg-[#eee9ff] text-[#5c4bd6]'
+  if (status === 'in_fulfillment') return 'border border-[#a8ead5] bg-[#e5fbf4] text-[#26866e]'
+  if (status === 'closed_completed') return 'border border-[#a8ead5] bg-[#e8fff7] text-[#26866e]'
+  return 'border border-[#ddd5ff] bg-[#f4f0ff] text-[#7d78a6]'
 }
 
 const intakeStatuses = new Set<RequestStatus>(['draft', 'intake_in_progress', 'ready_for_dispatch'])
@@ -207,14 +207,14 @@ onMounted(init)
     <AppHeader :title="t('common.appName')" :subtitle="t('requester.homeSubtitle')" logo-text="FF" />
 
     <main class="space-y-5 px-4 py-4">
-      <section class="ff-panel-soft ff-rise rounded-3xl p-4">
+      <section class="ff-warm-panel ff-rise rounded-[30px] p-4">
         <div class="flex items-center gap-3">
-          <div class="ff-glow flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-cyan-500 to-emerald-500 text-white">
+          <div class="ff-primary-gradient flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl">
             <UIcon name="i-lucide-life-buoy" class="size-5" />
           </div>
           <div class="min-w-0">
-            <p class="text-sm font-extrabold tracking-tight text-slate-900">{{ t('requester.homeTitle') }}</p>
-            <p class="mt-1 text-xs leading-5 text-slate-600">{{ t('requester.homeSubtitle') }}</p>
+            <p class="text-sm font-extrabold text-[#2b2853]">{{ t('requester.homeTitle') }}</p>
+            <p class="mt-1 text-xs leading-5 text-[#7d78a6]">{{ t('requester.homeSubtitle') }}</p>
           </div>
         </div>
       </section>
@@ -238,7 +238,7 @@ onMounted(init)
       <div v-else class="space-y-3">
         <div class="flex items-center justify-between">
           <h2 class="ff-section-title">{{ t('requester.homeTitle') }}</h2>
-          <span class="rounded-full border border-cyan-100 bg-cyan-50 px-2.5 py-1 text-[11px] font-bold text-cyan-700">
+          <span class="ff-pressed rounded-full px-2.5 py-1 text-[11px] font-bold text-[#5c4bd6]">
             {{ domains.length }}
           </span>
         </div>
@@ -273,13 +273,13 @@ onMounted(init)
             v-for="request in topRequests"
             :key="request.id"
             type="button"
-            class="ff-panel ff-rise w-full rounded-2xl p-3 text-left transition hover:-translate-y-0.5 hover:border-cyan-300"
+            class="ff-panel ff-rise w-full rounded-[24px] p-3 text-left transition hover:-translate-y-0.5"
             @click="navigateTo(requestOpenPath(request))"
           >
             <div class="flex items-start justify-between gap-2">
               <div class="min-w-0">
-                <p class="text-sm font-bold tracking-tight text-slate-900">{{ request.public_code }}</p>
-                <p class="mt-1 truncate text-xs text-slate-600">
+                <p class="text-sm font-bold text-[#2b2853]">{{ request.public_code }}</p>
+                <p class="mt-1 truncate text-xs text-[#7d78a6]">
                   {{ request.problem_summary || t('requester.openChat') }}
                 </p>
                 <p class="mt-1">
@@ -288,7 +288,7 @@ onMounted(init)
                   </span>
                 </p>
               </div>
-              <span class="rounded-full border border-cyan-100 bg-cyan-50 px-2 py-1 text-[11px] font-medium text-cyan-700">
+              <span class="ff-pressed rounded-full px-2 py-1 text-[11px] font-semibold text-[#5c4bd6]">
                 {{ t('common.open') }}
               </span>
             </div>
@@ -299,11 +299,16 @@ onMounted(init)
 
     <div
       v-if="creatingRequestDomainId"
-      class="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/30"
+      class="fixed inset-0 z-50 flex items-center justify-center bg-[#2b2853]/30 backdrop-blur-sm"
     >
-      <div class="ff-panel-soft rounded-2xl p-4">
-        <div class="ff-glow flex h-14 w-14 items-center justify-center rounded-2xl bg-gradient-to-br from-cyan-500 to-emerald-500">
-          <UIcon name="i-lucide-loader-2" class="size-7 animate-spin text-white [--icon-stroke-width:2.5]" />
+      <div class="ff-panel-soft rounded-2xl px-4 py-3">
+        <div class="flex items-center gap-3">
+          <div class="ff-primary-gradient flex h-14 w-14 items-center justify-center rounded-2xl">
+            <UIcon name="i-lucide-loader-2" class="size-7 animate-spin text-white [--icon-stroke-width:2.5]" />
+          </div>
+          <p class="text-sm font-semibold text-[#7d78a6]">
+            {{ t('common.loading') }}
+          </p>
         </div>
       </div>
     </div>

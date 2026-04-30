@@ -65,6 +65,7 @@ export default defineEventHandler(async (event) => {
       status: dispatch.status,
       expires_at: dispatch.expires_at,
       claimed_by_master_id: dispatch.claimed_by_master_id,
+      is_claimed_by_current_master: isClaimedByCurrentMaster,
       request: masked
     }
   })

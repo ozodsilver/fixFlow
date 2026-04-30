@@ -9,6 +9,34 @@ interface DispatchBody {
   idempotency_key?: string
 }
 
+function buildClaimButton(config: ReturnType<typeof useRuntimeConfig>, dispatchId: string) {
+  const startApp = encodeURIComponent(`dispatch_${dispatchId}`)
+  const botUsername = String(config.telegramBotUsername || '').trim().replace(/^@/, '')
+  const miniAppShortName = String(config.telegramMiniAppShortName || '').trim()
+
+  const tMeDirectUrl =
+    botUsername && miniAppShortName ? `https://t.me/${botUsername}/${miniAppShortName}?startapp=${startApp}` : undefined
+  const tMeMainUrl = botUsername ? `https://t.me/${botUsername}?startapp=${startApp}` : undefined
+
+  if (tMeDirectUrl) {
+    return {
+      url: tMeDirectUrl
+    }
+  }
+  if (tMeMainUrl) {
+    return {
+      url: tMeMainUrl
+    }
+  }
+  if (config.miniAppBaseUrl) {
+    const base = String(config.miniAppBaseUrl).replace(/\/+$/, '')
+    return {
+      url: `${base}/master/dispatches/${dispatchId}?dispatch_id=${dispatchId}`
+    }
+  }
+  return null
+}
+
 export default defineEventHandler(async (event) => {
   const requestId = getRouterParam(event, 'requestId')
   const body = await readBody<DispatchBody>(event)
@@ -75,23 +103,19 @@ export default defineEventHandler(async (event) => {
   const previewText = await buildDispatchPreviewText(event, {
     public_code: request.public_code,
     domain_id: request.domain_id,
-    issue_custom: request.issue_custom,
     problem_summary: request.problem_summary,
-    urgency: request.urgency,
     visit_time_mode: request.visit_time_mode,
     visit_time_at: request.visit_time_at,
     locale: request.locale
   })
 
-  const claimUrl = config.miniAppBaseUrl
-    ? `${String(config.miniAppBaseUrl).replace(/\/+$/, '')}/master/dispatches/${dispatch.id}`
-    : ''
+  const claimButton = buildClaimButton(config, dispatch.id)
   const claimButtonText = request.locale === 'ru' ? 'Принять заказ' : 'Буюртмани қабул қилиш'
   const sent = await sendTelegramDispatchMessage(
     config.telegramBotToken,
     Number(config.telegramMastersGroupId),
     previewText,
-    claimUrl ? { text: claimButtonText, url: claimUrl } : undefined
+    claimButton ? { text: claimButtonText, ...claimButton } : undefined
   )
   if (!sent.ok) {
     await supabase.from('dispatch_records').update({ status: 'failed_send' }).eq('id', dispatch.id)

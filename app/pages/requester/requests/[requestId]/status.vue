@@ -51,12 +51,12 @@ const statusLabel = (status: RequestStatus) => {
 }
 
 const statusToneClass = (status: RequestStatus) => {
-  if (status === 'draft' || status === 'intake_in_progress') return 'bg-amber-100 text-amber-800'
-  if (status === 'ready_for_dispatch' || status === 'dispatched') return 'bg-sky-100 text-sky-800'
-  if (status === 'in_fulfillment') return 'bg-emerald-100 text-emerald-800'
-  if (status === 'closed_completed') return 'bg-teal-100 text-teal-800'
-  if (status === 'closed_canceled_user' || status === 'closed_canceled_admin') return 'bg-rose-100 text-rose-800'
-  return 'bg-slate-100 text-slate-700'
+  if (status === 'draft' || status === 'intake_in_progress') return 'border border-[#ffd3b0] bg-[#fff1df] text-[#9b673d]'
+  if (status === 'ready_for_dispatch' || status === 'dispatched') return 'border border-[#cfc5ff] bg-[#eee9ff] text-[#5c4bd6]'
+  if (status === 'in_fulfillment') return 'border border-[#a8ead5] bg-[#e5fbf4] text-[#26866e]'
+  if (status === 'closed_completed') return 'border border-[#a8ead5] bg-[#e8fff7] text-[#26866e]'
+  if (status === 'closed_canceled_user' || status === 'closed_canceled_admin') return 'border border-[#ffb8c0] bg-[#fff0f2] text-[#b3475b]'
+  return 'border border-[#ddd5ff] bg-[#f4f0ff] text-[#7d78a6]'
 }
 
 const statusStep = (status: RequestStatus) => {
@@ -143,10 +143,10 @@ onMounted(async () => {
       />
 
       <template v-else-if="request">
-        <section class="ff-panel-soft ff-rise rounded-3xl p-4">
-          <p class="text-xs font-bold uppercase tracking-wide text-slate-500">{{ t('common.status') }}</p>
+        <section class="ff-warm-panel ff-rise rounded-[30px] p-4">
+          <p class="text-xs font-bold uppercase tracking-wide text-[#7d78a6]">{{ t('common.status') }}</p>
           <div class="mt-2 flex items-center justify-between gap-3">
-            <p class="text-sm font-bold tracking-tight text-slate-900">{{ request.public_code }}</p>
+            <p class="text-sm font-bold text-[#2b2853]">{{ request.public_code }}</p>
             <span class="ff-status-chip" :class="statusToneClass(request.status)">
               {{ statusLabel(request.status) }}
             </span>
@@ -156,7 +156,7 @@ onMounted(async () => {
               v-for="n in 4"
               :key="n"
               class="h-1.5 rounded-full"
-              :class="n <= statusStep(request.status) ? 'bg-emerald-500' : 'bg-slate-200'"
+              :class="n <= statusStep(request.status) ? 'bg-[#7358e8] shadow-[0_2px_8px_rgba(115,88,232,0.28)]' : 'ff-pressed'"
             />
           </div>
         </section>
@@ -176,13 +176,13 @@ onMounted(async () => {
           :retry-label="t('common.retry')"
           @retry="load()"
         />
-        <section v-if="noticeMessage" class="ff-panel-soft rounded-2xl border border-sky-200 p-3">
-          <p class="text-sm font-medium text-sky-800">
+        <section v-if="noticeMessage" class="ff-panel-soft rounded-2xl p-3">
+          <p class="text-sm font-medium text-[#5c4bd6]">
             {{ noticeMessage }}
           </p>
         </section>
 
-        <section class="ff-panel ff-rise rounded-3xl p-3">
+        <section class="ff-panel ff-rise rounded-[28px] p-3">
           <div class="flex flex-wrap gap-2">
             <UButton color="neutral" variant="soft" class="font-semibold" :loading="refreshing" @click="load(true)">
               {{ t('common.refresh') }}
@@ -200,7 +200,7 @@ onMounted(async () => {
               {{ t('requester.cancelRequest') }}
             </UButton>
           </div>
-          <p v-if="!canCancel" class="mt-2 text-xs text-slate-600">
+          <p v-if="!canCancel" class="mt-2 text-xs text-[#7d78a6]">
             {{ t('requester.cancelBlocked') }}
           </p>
         </section>

@@ -31,13 +31,68 @@ const canFillForm = computed(() => {
 
 const greetingText = computed(() => {
   const name = requesterName.value ? `, ${requesterName.value}` : ''
-  if (locale.value === 'ru') return `Здравствуйте${name}. Пожалуйста, заполните форму с вашими данными.`
-  return `Салом${name}. Илтимос, маълумотларингизни формага киритинг.`
+  if (locale.value === 'ru') return `Здравствуйте${name}. Пожалуйста, введите описание проблемы и данные.`
+  return `Салом${name}. Илтимос, муаммо тавсилоти ва маълумотларни киритинг.`
+})
+
+const UZ_PHONE_REGEX = /^\+998 \d{2} \d{3} \d{2} \d{2}$/
+
+const phoneFormatError = computed(() => {
+  if (!phoneInput.value.trim()) return ''
+  if (UZ_PHONE_REGEX.test(phoneInput.value.trim())) return ''
+  return "Телефон рақами +998 XX XXX XX XX форматда бўлиши керак."
+})
+
+const normalizeUzPhone = (value: string) => {
+  const digits = value.replace(/\D/g, '')
+  if (!digits.startsWith('998')) return ''
+  return `+${digits}`
+}
+
+const formatUzPhoneInput = (value: string) => {
+  const digits = value.replace(/\D/g, '')
+  const local = digits.startsWith('998') ? digits.slice(3) : digits
+  const limited = local.slice(0, 9)
+  const parts = [
+    limited.slice(0, 2),
+    limited.slice(2, 5),
+    limited.slice(5, 7),
+    limited.slice(7, 9)
+  ].filter(Boolean)
+  return `+998${parts.length ? ` ${parts.join(' ')}` : ''}`
+}
+
+const onPhoneInput = (value: string | number) => {
+  phoneInput.value = formatUzPhoneInput(String(value ?? ''))
+}
+
+const minVisitDateTime = computed(() => {
+  const now = new Date()
+  const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate())
+  const local = new Date(startOfToday.getTime() - startOfToday.getTimezoneOffset() * 60000)
+  return local.toISOString().slice(0, 16)
+})
+
+const visitTimeError = computed(() => {
+  if (!visitTimeInput.value.trim()) return ''
+  const selected = new Date(visitTimeInput.value)
+  if (Number.isNaN(selected.getTime())) return ''
+
+  const now = new Date()
+  const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate())
+  if (selected < startOfToday) {
+    return locale.value === 'ru'
+      ? 'Нельзя выбрать дату раньше сегодняшнего дня.'
+      : 'Бугундан олдинги санани танлаб бўлмайди.'
+  }
+  return ''
 })
 
 const submitDisabled = computed(() => {
   if (!request.value || !canFillForm.value) return true
   if (!phoneInput.value.trim() || !visitTimeInput.value.trim() || !problemSummaryInput.value.trim()) return true
+  if (!!phoneFormatError.value) return true
+  if (!!visitTimeError.value) return true
   const hasSavedAddress =
     !!request.value.address_text && request.value.address_lat !== null && request.value.address_lng !== null
   const hasDraftAddress = !!draftAddress.value?.address_text
@@ -61,11 +116,11 @@ const statusLabel = (status: RequestStatus) => {
 }
 
 const statusToneClass = (status: RequestStatus) => {
-  if (status === 'draft' || status === 'intake_in_progress') return 'bg-amber-100 text-amber-800'
-  if (status === 'ready_for_dispatch' || status === 'dispatched') return 'bg-sky-100 text-sky-800'
-  if (status === 'in_fulfillment') return 'bg-emerald-100 text-emerald-800'
-  if (status === 'closed_completed') return 'bg-teal-100 text-teal-800'
-  return 'bg-slate-100 text-slate-700'
+  if (status === 'draft' || status === 'intake_in_progress') return 'border border-[#ffd3b0] bg-[#fff1df] text-[#9b673d]'
+  if (status === 'ready_for_dispatch' || status === 'dispatched') return 'border border-[#cfc5ff] bg-[#eee9ff] text-[#5c4bd6]'
+  if (status === 'in_fulfillment') return 'border border-[#a8ead5] bg-[#e5fbf4] text-[#26866e]'
+  if (status === 'closed_completed') return 'border border-[#a8ead5] bg-[#e8fff7] text-[#26866e]'
+  return 'border border-[#ddd5ff] bg-[#f4f0ff] text-[#7d78a6]'
 }
 
 const loadDomain = async (domainId: number) => {
@@ -91,7 +146,7 @@ const loadRequesterName = async () => {
 
 const syncFromRequest = (value: ServiceRequest) => {
   request.value = value
-  if (value.phone_e164 && !phoneInput.value) phoneInput.value = value.phone_e164
+  if (value.phone_e164 && !phoneInput.value) phoneInput.value = formatUzPhoneInput(value.phone_e164)
   if (value.visit_time_at && !visitTimeInput.value) {
     const dt = new Date(value.visit_time_at)
     const local = new Date(dt.getTime() - dt.getTimezoneOffset() * 60000).toISOString().slice(0, 16)
@@ -158,7 +213,7 @@ const submitStructuredForm = async () => {
     }
 
     const result = await api.submitStructuredIntake(request.value.id, {
-      phone: phoneInput.value.trim(),
+      phone: normalizeUzPhone(phoneInput.value.trim()),
       visit_time_at: new Date(visitTimeInput.value).toISOString(),
       problem_summary: problemSummaryInput.value.trim(),
       address_text: request.value.address_text!,
@@ -202,45 +257,57 @@ onMounted(loadRequest)
       />
 
       <template v-else-if="request">
-        <section class="ff-panel-soft ff-rise rounded-3xl p-3">
+        <section class="ff-rise rounded-2xl border border-slate-200 bg-white p-3 shadow-sm">
           <div class="flex items-start justify-between gap-3">
             <div class="min-w-0">
               <p class="text-xs font-semibold uppercase tracking-wide text-slate-500">{{ t('requester.domainLabel') }}</p>
-              <p class="mt-1 truncate text-sm font-bold tracking-tight text-slate-900">{{ domainName }}</p>
+              <p class="mt-1">
+                <span class="inline-flex max-w-full items-center rounded-full border border-violet-200 bg-violet-50 px-2.5 py-1 text-xs font-semibold text-violet-700">
+                  <span class="truncate">{{ domainName }}</span>
+                </span>
+              </p>
             </div>
-            <span class="ff-status-chip shrink-0" :class="statusToneClass(request.status)">
+            <span v-if="request.status !== 'draft'" class="ff-status-chip shrink-0" :class="statusToneClass(request.status)">
               {{ statusLabel(request.status) }}
             </span>
           </div>
         </section>
 
-        <section class="ff-panel-soft ff-rise rounded-3xl p-4">
-          <p class="text-sm font-bold text-slate-900">{{ greetingText }}</p>
+        <section class="ff-rise rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+          <p class="text-sm font-bold text-slate-800">{{ greetingText }}</p>
         </section>
 
-        <section class="ff-rise rounded-3xl border border-emerald-200 bg-gradient-to-br from-emerald-50 to-cyan-50 p-4">
-          <p class="text-xs font-bold uppercase tracking-wide text-emerald-700">{{ t('requester.readyToDispatch') }}</p>
+        <section class="ff-rise rounded-3xl border border-slate-200 bg-white p-4 shadow-sm">
+          <p class="text-xs font-bold uppercase tracking-wide text-violet-700">{{ t('requester.readyToDispatch') }}</p>
           <div class="mt-3 space-y-3">
             <UFormField :label="t('requester.formPhone')" required>
               <UInput
                 v-model="phoneInput"
-                :placeholder="t('requester.formPhone')"
+                placeholder="+998 90 123 45 67"
                 :disabled="!canFillForm"
                 size="xl"
                 variant="outline"
                 class="w-full"
+                @update:model-value="onPhoneInput"
               />
+              <p v-if="phoneFormatError" class="mt-1 text-xs font-medium text-rose-600">
+                {{ phoneFormatError }}
+              </p>
             </UFormField>
 
             <UFormField :label="t('requester.formVisitTime')" required>
               <UInput
                 v-model="visitTimeInput"
                 type="datetime-local"
+                :min="minVisitDateTime"
                 :disabled="!canFillForm"
                 size="xl"
                 variant="outline"
                 class="w-full"
               />
+              <p v-if="visitTimeError" class="mt-1 text-xs font-medium text-rose-600">
+                {{ visitTimeError }}
+              </p>
             </UFormField>
 
             <AddressMapPicker
