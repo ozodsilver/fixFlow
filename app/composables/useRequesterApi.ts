@@ -26,6 +26,21 @@ interface IntakeBody {
   idempotency_key: string
 }
 
+interface MapAddressBody {
+  address_text: string
+  address_lat: number
+  address_lng: number
+}
+
+interface StructuredIntakeBody {
+  phone: string
+  problem_summary: string
+  visit_time_at: string
+  address_text: string
+  address_lat: number
+  address_lng: number
+}
+
 export function useRequesterApi() {
   const initAuth = (body: InitAuthBody) =>
     $fetch<ApiDataResponse<{ session_expires_at: string; user: SessionUser; roles: SessionRoles }>>('/api/v1/auth/telegram/init', {
@@ -57,6 +72,21 @@ export function useRequesterApi() {
       body
     })
 
+  const setAddressFromMap = (requestId: string, body: MapAddressBody) =>
+    $fetch<ApiDataResponse<{ request: ServiceRequest }>>(`/api/v1/requests/${requestId}/address`, {
+      method: 'POST',
+      body
+    })
+
+  const submitStructuredIntake = (requestId: string, body: StructuredIntakeBody) =>
+    $fetch<ApiDataResponse<{ ai_reply: string; request: ServiceRequest; dispatch_id: string; expires_at: string }>>(
+      `/api/v1/requests/${requestId}/intake/structured`,
+      {
+        method: 'POST',
+        body
+      }
+    )
+
   const getIntakeMessages = (requestId: string, limit = 80) =>
     $fetch<ApiDataResponse<{ items: IntakeMessage[] }>>(`/api/v1/requests/${requestId}/intake/messages`, {
       query: { limit }
@@ -78,7 +108,7 @@ export function useRequesterApi() {
     })
 
   const cancelRequest = (requestId: string, reason?: string) =>
-    $fetch<ApiDataResponse<{ status: RequestStatus }>>(`/api/v1/requests/${requestId}/cancel`, {
+    $fetch<ApiDataResponse<{ status: RequestStatus; admin_review_required: boolean }>>(`/api/v1/requests/${requestId}/cancel`, {
       method: 'POST',
       body: { reason }
     })
@@ -93,6 +123,8 @@ export function useRequesterApi() {
     getRequest,
     getIntakeMessages,
     postIntakeMessage,
+    setAddressFromMap,
+    submitStructuredIntake,
     confirmIntake,
     dispatchRequest,
     cancelRequest

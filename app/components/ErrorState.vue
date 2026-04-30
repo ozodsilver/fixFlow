@@ -15,7 +15,7 @@ const emit = defineEmits<{ retry: [] }>()
 </script>
 
 <template>
-  <div class="ff-rise rounded-2xl border border-rose-200 bg-gradient-to-b from-rose-50 to-rose-100/70 p-4">
+  <div class="ff-rise rounded-3xl border border-rose-200 bg-gradient-to-b from-rose-50 to-rose-100/70 p-4 shadow-sm">
     <div class="flex items-start gap-2">
       <div class="rounded-lg bg-white/80 p-1.5">
         <UIcon name="i-lucide-alert-triangle" class="size-4 text-rose-700" />

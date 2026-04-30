@@ -23,12 +23,12 @@ const domainIcon = computed(() => {
 <template>
   <button
     type="button"
-    class="ff-panel-soft ff-rise group w-full rounded-2xl p-4 text-left transition hover:-translate-y-0.5 hover:border-emerald-300"
+    class="ff-panel-soft ff-rise group w-full rounded-3xl p-4 text-left transition hover:-translate-y-0.5 hover:border-cyan-300 hover:shadow-lg"
     @click="emit('select', props.domain)"
   >
-    <div class="flex items-start justify-between gap-3">
-      <div class="flex min-w-0 items-start gap-3">
-        <div class="rounded-xl bg-emerald-100 p-2 text-emerald-700">
+    <div class="flex items-center justify-between gap-3">
+      <div class="flex min-w-0 items-center gap-3">
+        <div class="ff-glow flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-cyan-500 to-emerald-500 text-white">
           <UIcon :name="domainIcon" class="size-4" />
         </div>
         <div class="min-w-0">
@@ -36,11 +36,8 @@ const domainIcon = computed(() => {
           <p v-if="props.subtitle" class="mt-1 text-xs leading-4 text-slate-600">{{ props.subtitle }}</p>
         </div>
       </div>
-      <div class="flex shrink-0 items-center gap-2">
-        <span class="rounded-lg bg-white px-2 py-1 text-[11px] font-semibold text-emerald-700">
-          {{ props.domain.slug }}
-        </span>
-        <UIcon name="i-lucide-chevron-right" class="size-4 text-slate-400 transition group-hover:text-emerald-600" />
+      <div class="flex shrink-0 items-center">
+        <UIcon name="i-lucide-chevron-right" class="size-4 text-slate-400 transition group-hover:text-cyan-600" />
       </div>
     </div>
   </button>

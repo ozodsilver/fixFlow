@@ -3,6 +3,7 @@ import { apiError, ok } from '~~/server/utils/api'
 import { requireOwnedRequest } from '~~/server/utils/auth'
 import { getSupabaseAdmin } from '~~/server/utils/supabase-admin'
 import { computeMissingFields } from '~~/server/utils/intake'
+import { buildDispatchPreviewText, sendTelegramDispatchMessage } from '~~/server/utils/telegram-dispatch'
 
 interface DispatchBody {
   idempotency_key?: string
@@ -31,6 +32,8 @@ export default defineEventHandler(async (event) => {
     problem_summary: request.problem_summary,
     phone_e164: request.phone_e164,
     address_text: request.address_text,
+    address_lat: request.address_lat,
+    address_lng: request.address_lng,
     landmark_text: request.landmark_text,
     urgency: request.urgency,
     visit_time_mode: request.visit_time_mode,
@@ -55,7 +58,7 @@ export default defineEventHandler(async (event) => {
       request_id: request.id,
       attempt_no: attemptNo,
       telegram_group_id: Number(config.telegramMastersGroupId || 0),
-      status: 'open',
+      status: 'pending_send',
       expires_at: expiresAt
     })
     .select('id, status, expires_at')
@@ -64,6 +67,44 @@ export default defineEventHandler(async (event) => {
   if (dispatchError || !dispatch) {
     apiError(500, 'db.failed', 'Failed to create dispatch record', { reason: dispatchError?.message })
   }
+
+  if (!config.telegramBotToken || !config.telegramMastersGroupId || Number(config.telegramMastersGroupId) === 0) {
+    apiError(500, 'config.missing', 'TELEGRAM_BOT_TOKEN or TELEGRAM_MASTERS_GROUP_ID is missing')
+  }
+
+  const previewText = await buildDispatchPreviewText(event, {
+    public_code: request.public_code,
+    domain_id: request.domain_id,
+    issue_custom: request.issue_custom,
+    problem_summary: request.problem_summary,
+    urgency: request.urgency,
+    visit_time_mode: request.visit_time_mode,
+    visit_time_at: request.visit_time_at,
+    locale: request.locale
+  })
+
+  const claimUrl = config.miniAppBaseUrl
+    ? `${String(config.miniAppBaseUrl).replace(/\/+$/, '')}/master/dispatches/${dispatch.id}`
+    : ''
+  const claimButtonText = request.locale === 'ru' ? 'Принять заказ' : 'Буюртмани қабул қилиш'
+  const sent = await sendTelegramDispatchMessage(
+    config.telegramBotToken,
+    Number(config.telegramMastersGroupId),
+    previewText,
+    claimUrl ? { text: claimButtonText, url: claimUrl } : undefined
+  )
+  if (!sent.ok) {
+    await supabase.from('dispatch_records').update({ status: 'failed_send' }).eq('id', dispatch.id)
+    apiError(500, 'dispatch.send_failed', 'Failed to send message to Telegram group', { reason: sent.error })
+  }
+
+  await supabase
+    .from('dispatch_records')
+    .update({
+      status: 'open',
+      telegram_message_id: sent.messageId
+    })
+    .eq('id', dispatch.id)
 
   const { error: requestUpdateError } = await supabase
     .from('service_requests')

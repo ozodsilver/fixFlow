@@ -10,10 +10,11 @@ const refreshing = ref(false)
 const cancelling = ref(false)
 const request = ref<ServiceRequest | null>(null)
 const errorMessage = ref('')
+const noticeMessage = ref('')
 
 const requestId = computed(() => String(route.params.requestId || ''))
 
-const cancellableStatuses: RequestStatus[] = ['draft', 'intake_in_progress', 'ready_for_dispatch', 'dispatched']
+const cancellableStatuses: RequestStatus[] = ['draft', 'intake_in_progress', 'ready_for_dispatch', 'dispatched', 'in_fulfillment']
 const cancellableStatusSet = new Set<RequestStatus>(cancellableStatuses)
 
 const canCancel = computed(() => {
@@ -73,6 +74,7 @@ const load = async (silent = false) => {
     loading.value = true
   }
   errorMessage.value = ''
+  noticeMessage.value = ''
 
   try {
     const result = await api.getRequest(requestId.value)
@@ -93,12 +95,16 @@ const cancelRequest = async () => {
 
   cancelling.value = true
   errorMessage.value = ''
+  noticeMessage.value = ''
 
   try {
     const result = await api.cancelRequest(request.value.id)
     request.value = {
       ...request.value,
       status: result.data.status
+    }
+    if (result.data.admin_review_required) {
+      noticeMessage.value = t('requester.cancelSentToAdmin')
     }
   }
   catch (error: unknown) {
@@ -110,24 +116,20 @@ const cancelRequest = async () => {
   }
 }
 
-let pollTimer: ReturnType<typeof setInterval> | null = null
-
 onMounted(async () => {
   await load()
-
-  pollTimer = setInterval(() => {
-    void load(true)
-  }, 12000)
-})
-
-onBeforeUnmount(() => {
-  if (pollTimer) clearInterval(pollTimer)
 })
 </script>
 
 <template>
   <div class="ff-shell min-h-dvh">
-    <AppHeader :title="t('requester.statusTitle')" :subtitle="t('common.status')" logo-text="FF" />
+    <AppHeader
+      :title="t('requester.statusTitle')"
+      :subtitle="t('common.status')"
+      logo-text="FF"
+      :show-back-button="true"
+      back-to="/requester"
+    />
 
     <main class="space-y-4 px-4 py-4">
       <LoadingState v-if="loading" :label="t('requester.loadingRequest')" />
@@ -141,7 +143,7 @@ onBeforeUnmount(() => {
       />
 
       <template v-else-if="request">
-        <section class="ff-panel-soft ff-rise rounded-2xl p-4">
+        <section class="ff-panel-soft ff-rise rounded-3xl p-4">
           <p class="text-xs font-bold uppercase tracking-wide text-slate-500">{{ t('common.status') }}</p>
           <div class="mt-2 flex items-center justify-between gap-3">
             <p class="text-sm font-bold tracking-tight text-slate-900">{{ request.public_code }}</p>
@@ -174,8 +176,13 @@ onBeforeUnmount(() => {
           :retry-label="t('common.retry')"
           @retry="load()"
         />
+        <section v-if="noticeMessage" class="ff-panel-soft rounded-2xl border border-sky-200 p-3">
+          <p class="text-sm font-medium text-sky-800">
+            {{ noticeMessage }}
+          </p>
+        </section>
 
-        <section class="ff-panel ff-rise rounded-2xl p-3">
+        <section class="ff-panel ff-rise rounded-3xl p-3">
           <div class="flex flex-wrap gap-2">
             <UButton color="neutral" variant="soft" class="font-semibold" :loading="refreshing" @click="load(true)">
               {{ t('common.refresh') }}

@@ -90,6 +90,8 @@ export interface ServiceRequest {
   problem_summary: string | null
   phone_e164: string | null
   address_text: string | null
+  address_lat: number | null
+  address_lng: number | null
   landmark_text: string | null
   urgency: 'low' | 'normal' | 'high' | 'emergency' | null
   visit_time_mode: 'asap' | 'scheduled' | null

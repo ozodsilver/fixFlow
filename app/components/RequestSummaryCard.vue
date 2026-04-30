@@ -16,13 +16,13 @@ const props = defineProps<{
 </script>
 
 <template>
-  <section class="ff-panel ff-rise rounded-2xl p-4">
+  <section class="ff-panel ff-rise rounded-3xl p-4">
     <p class="text-xs font-bold uppercase tracking-wide text-slate-500">{{ props.title }}</p>
 
     <dl class="mt-3 space-y-2 text-sm text-slate-800">
       <div class="flex items-center justify-between gap-3">
         <dt class="text-slate-500">{{ props.labels?.id || 'ID' }}</dt>
-        <dd class="rounded-full bg-emerald-50 px-2.5 py-1 text-xs font-semibold text-emerald-700">{{ props.request.public_code }}</dd>
+        <dd class="rounded-full border border-cyan-100 bg-cyan-50 px-2.5 py-1 text-xs font-semibold text-cyan-700">{{ props.request.public_code }}</dd>
       </div>
       <div class="flex items-center justify-between gap-3">
         <dt class="text-slate-500">{{ props.labels?.status || 'Status' }}</dt>

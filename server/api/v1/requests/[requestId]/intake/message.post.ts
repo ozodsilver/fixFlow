@@ -50,6 +50,8 @@ export default defineEventHandler(async (event) => {
         problem_summary: request.problem_summary,
         phone_e164: request.phone_e164,
         address_text: request.address_text,
+        address_lat: request.address_lat,
+        address_lng: request.address_lng,
         landmark_text: request.landmark_text,
         urgency: request.urgency,
         visit_time_mode: request.visit_time_mode,
@@ -58,8 +60,8 @@ export default defineEventHandler(async (event) => {
       }
     },
     {
-      groqApiKey: config.groqApiKey,
-      groqModel: config.groqModel
+      geminiApiKey: config.geminiApiKey,
+      geminiModel: config.geminiModel
     }
   )
 
@@ -70,6 +72,8 @@ export default defineEventHandler(async (event) => {
     problem_summary: request.problem_summary,
     phone_e164: request.phone_e164,
     address_text: request.address_text,
+    address_lat: request.address_lat,
+    address_lng: request.address_lng,
     landmark_text: request.landmark_text,
     urgency: request.urgency,
     visit_time_mode: request.visit_time_mode,

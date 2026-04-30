@@ -5,6 +5,8 @@ interface IntakeCurrentState {
   problem_summary: string | null
   phone_e164: string | null
   address_text: string | null
+  address_lat: number | null
+  address_lng: number | null
   landmark_text: string | null
   urgency: 'low' | 'normal' | 'high' | 'emergency' | null
   visit_time_mode: 'asap' | 'scheduled' | null
@@ -25,11 +27,11 @@ export interface IntakeOutput {
 }
 
 interface IntakeAiOptions {
-  groqApiKey?: string
-  groqModel?: string
+  geminiApiKey?: string
+  geminiModel?: string
 }
 
-interface GroqReplyPayload {
+interface GeminiReplyPayload {
   intent?: string
   ai_reply?: string
   updates?: Record<string, unknown>
@@ -53,6 +55,8 @@ function normalizePhone(raw: string): string | null {
   if (!clean) return null
   if (clean.startsWith('+') && /^\+[1-9][0-9]{7,14}$/.test(clean)) return clean
   if (/^998\d{9}$/.test(clean)) return `+${clean}`
+  // Local Uzbekistan format without country prefix (9 digits)
+  if (/^\d{9}$/.test(clean)) return `+998${clean}`
   return null
 }
 
@@ -91,15 +95,28 @@ function asShortText(raw: unknown, max: number): string | null {
 }
 
 export function computeMissingFields(current: IntakeCurrentState) {
-  void current
-  return []
+  const missing: string[] = []
+
+  if (!current.problem_summary?.trim()) {
+    missing.push('problem_summary')
+  }
+
+  if (!current.phone_e164?.trim()) {
+    missing.push('phone')
+  }
+
+  if (!current.address_text?.trim() || current.address_lat === null || current.address_lng === null) {
+    missing.push('address')
+  }
+
+  return missing
 }
 
 function buildPrompt(locale: 'uz_cyrl' | 'ru', missing: string[]) {
   if (missing.length === 0) {
     return locale === 'ru'
-      ? 'Данные заполнены. Подтвердите и отправьте заявку мастерам.'
-      : 'Маълумотлар тўлдирилди. Тасдиқлаб, сўровни усталарга юборинг.'
+      ? 'Спасибо, данные получили. Ваши данные отправлены мастерам.'
+      : 'Раҳмат, маълумотларни олдик. Маълумотларингиз мастерларга юборилди.'
   }
 
   const next = missing[0]
@@ -158,6 +175,7 @@ function fallbackAnalyze(input: IntakeInput): IntakeOutput {
   const text = input.text.trim()
 
   const updates: Partial<IntakeCurrentState> = {}
+  const initialMissing = computeMissingFields(input.current)
 
   const phoneMatch = text.match(/(\+?\d[\d\s\-()]{8,20})/)
   if (phoneMatch) {
@@ -169,7 +187,13 @@ function fallbackAnalyze(input: IntakeInput): IntakeOutput {
     updates.problem_summary = text.slice(0, 240)
   }
 
-  if (!input.current.address_text && /(кўча|улица|дом|уй|manzil|адрес)/i.test(text)) {
+  if (
+    !input.current.address_text &&
+    (
+      /(кўча|ko['’]?cha|улица|дом|uy|уй|manzil|манзил|адрес|mahalla|mahallasi|mikrorayon|микрорайон)/i.test(text) ||
+      (initialMissing.includes('address') && text.length >= 6)
+    )
+  ) {
     updates.address_text = text.slice(0, 280)
   }
 
@@ -234,6 +258,15 @@ function sanitizeUpdates(
 
   const addressRaw = asShortText(updates.address_text, 280)
   if (addressRaw) normalized.address_text = addressRaw
+
+  const latRaw = updates.address_lat
+  const lngRaw = updates.address_lng
+  if (typeof latRaw === 'number' && Number.isFinite(latRaw) && latRaw >= -90 && latRaw <= 90) {
+    normalized.address_lat = latRaw
+  }
+  if (typeof lngRaw === 'number' && Number.isFinite(lngRaw) && lngRaw >= -180 && lngRaw <= 180) {
+    normalized.address_lng = lngRaw
+  }
 
   const landmarkRaw = asShortText(updates.landmark_text, 180)
   if (landmarkRaw) normalized.landmark_text = landmarkRaw
@@ -303,21 +336,26 @@ function extractJsonObject(raw: string): Record<string, unknown> | null {
   }
 }
 
-async function callGroq(input: IntakeInput, options: IntakeAiOptions): Promise<GroqReplyPayload | null> {
-  const apiKey = options.groqApiKey?.trim()
+async function callGemini(input: IntakeInput, options: IntakeAiOptions): Promise<GeminiReplyPayload | null> {
+  const apiKey = options.geminiApiKey?.trim()
   if (!apiKey) return null
 
   const missing = computeMissingFields(input.current)
   const localeLabel = input.locale === 'ru' ? 'ru' : 'uz_cyrl'
 
   const systemPrompt = [
-    'You are an assistant in a home service request chat.',
+    'You are FixFlow intake assistant for Telegram mini app service marketplace.',
+    'Context: users submit home service requests and approved masters claim them in Telegram masters group.',
+    'Your role: collect user request data clearly and politely, then move toward dispatch.',
+    'Always greet user naturally on first interaction if appropriate, and keep messages operational.',
     'Answer user questions naturally and briefly, then continue intake if required fields are still missing.',
     'Keep ai_reply short: maximum 2 short operational sentences.',
-    'Collect/update only these fields: issue_custom, problem_summary, phone_raw, address_text, landmark_text, urgency, visit_time_mode, visit_time_at, consent_share.',
+    'Collect/update only these fields: issue_custom, problem_summary, phone_raw, address_text, address_lat, address_lng, landmark_text, urgency, visit_time_mode, visit_time_at, consent_share.',
     'urgency must be one of: low, normal, high, emergency.',
     'visit_time_mode must be one of: asap, scheduled.',
     'Output JSON only with keys: intent, ai_reply, updates, offtopic, abuse.',
+    'Required for readiness in this phase: problem_summary, phone, address.',
+    'When all required fields are present, ai_reply should confirm data was sent to masters.',
     'Do not invent data. If unsure, leave updates empty.'
   ].join('\n')
 
@@ -333,22 +371,31 @@ async function callGroq(input: IntakeInput, options: IntakeAiOptions): Promise<G
   )
 
   const body = {
-    model: options.groqModel || 'llama-3.1-8b-instant',
-    temperature: 0.1,
-    response_format: { type: 'json_object' },
-    messages: [
-      { role: 'system', content: systemPrompt },
-      { role: 'user', content: userPrompt }
-    ]
+    systemInstruction: {
+      parts: [{ text: systemPrompt }]
+    },
+    contents: [
+      {
+        role: 'user',
+        parts: [{ text: userPrompt }]
+      }
+    ],
+    generationConfig: {
+      temperature: 0.1,
+      responseMimeType: 'application/json'
+    }
   }
 
   const controller = new AbortController()
   const timeout = setTimeout(() => controller.abort(), 15000)
 
-  const response = await fetch('https://api.groq.com/openai/v1/chat/completions', {
+  const model = options.geminiModel || 'gemini-2.0-flash'
+  const endpoint =
+    `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent?key=${encodeURIComponent(apiKey)}`
+
+  const response = await fetch(endpoint, {
     method: 'POST',
     headers: {
-      Authorization: `Bearer ${apiKey}`,
       'Content-Type': 'application/json'
     },
     body: JSON.stringify(body),
@@ -360,18 +407,20 @@ async function callGroq(input: IntakeInput, options: IntakeAiOptions): Promise<G
   }
 
   const payload = await response.json() as {
-    choices?: Array<{
-      message?: {
-        content?: string
+    candidates?: Array<{
+      content?: {
+        parts?: Array<{
+          text?: string
+        }>
       }
     }>
   }
 
-  const content = payload.choices?.[0]?.message?.content || ''
+  const content = payload.candidates?.[0]?.content?.parts?.map(part => part.text || '').join('\n') || ''
   const parsed = extractJsonObject(content)
   if (!parsed) return null
 
-  return parsed as GroqReplyPayload
+  return parsed as GeminiReplyPayload
 }
 
 function normalizeAiReply(raw: unknown, locale: 'uz_cyrl' | 'ru', missing: string[]) {
@@ -393,13 +442,18 @@ export async function analyzeIntakeMessage(input: IntakeInput, options: IntakeAi
   }
 
   const fallback = fallbackAnalyze(input)
-  const groq = await callGroq(input, options)
-  if (!groq) {
+  const gemini = await callGemini(input, options)
+  if (!gemini) {
     return fallback
   }
 
-  const groqIntent = toSafeIntent(groq.intent, fallback.intent)
-  const updates = sanitizeUpdates(groq.updates, input.current)
+  const geminiIntent = toSafeIntent(gemini.intent, fallback.intent)
+  // Prefer deterministic fallback extraction, then let Gemini override where it has better normalized values.
+  const aiUpdates = sanitizeUpdates(gemini.updates, input.current)
+  const updates = {
+    ...fallback.updates,
+    ...aiUpdates
+  }
 
   const merged = {
     ...input.current,
@@ -408,11 +462,11 @@ export async function analyzeIntakeMessage(input: IntakeInput, options: IntakeAi
   const missing = computeMissingFields(merged)
 
   const intent = missing.length === 0
-    ? (groqIntent === 'confirm' ? 'confirm' : 'ready')
+    ? (geminiIntent === 'confirm' ? 'confirm' : 'ready')
     : 'collect'
   return {
     intent,
-    aiReply: normalizeAiReply(groq.ai_reply, input.locale, missing),
+    aiReply: normalizeAiReply(gemini.ai_reply, input.locale, missing),
     updates
   }
 }

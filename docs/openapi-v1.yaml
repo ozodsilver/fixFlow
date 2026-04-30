@@ -80,6 +80,8 @@ components:
         problem_summary: { type: string, nullable: true }
         phone_e164: { type: string, nullable: true }
         address_text: { type: string, nullable: true }
+        address_lat: { type: number, format: double, nullable: true }
+        address_lng: { type: number, format: double, nullable: true }
         landmark_text: { type: string, nullable: true }
         urgency: { type: string, nullable: true }
         visit_time_mode: { type: string, nullable: true }
@@ -276,6 +278,31 @@ paths:
           content:
             application/json:
               schema: { $ref: '#/components/schemas/ErrorResponse' }
+
+  /api/v1/requests/{requestId}/address:
+    post:
+      tags: [requester]
+      summary: Save request address from map (owner only)
+      x-error-codes: [auth.session_expired, request.not_found, request.not_owner, validation.failed]
+      parameters:
+        - in: path
+          name: requestId
+          required: true
+          schema: { type: string, format: uuid }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [address_text, address_lat, address_lng]
+              properties:
+                address_text: { type: string }
+                address_lat: { type: number, format: double }
+                address_lng: { type: number, format: double }
+      responses:
+        '200':
+          description: Address saved
 
   /api/v1/requests/{requestId}/intake/message:
     post:

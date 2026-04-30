@@ -19,6 +19,7 @@ export default defineEventHandler(async (event) => {
   let telegramUserId: number | null = null
   let displayName: string | null = null
   let username: string | null = null
+  let usedDevBypass = false
 
   if (body.init_data) {
     if (!config.telegramBotToken) {
@@ -35,6 +36,7 @@ export default defineEventHandler(async (event) => {
     username = parsedUser.username ?? null
   }
   else if (config.public.allowDevAuthBypass && body.telegram_user_id) {
+    usedDevBypass = true
     telegramUserId = body.telegram_user_id
     displayName = body.display_name?.trim() || `Dev User ${body.telegram_user_id}`
     username = null
@@ -63,6 +65,26 @@ export default defineEventHandler(async (event) => {
 
   if (upsertError || !user) {
     apiError(500, 'db.failed', 'Failed to create or update user', { reason: upsertError?.message })
+  }
+
+  // Dev-only convenience: in non-production (allowDevAuthBypass=true), auto-mark this user as approved master.
+  if (config.public.allowDevAuthBypass || usedDevBypass) {
+    const { error: masterUpsertError } = await supabase
+      .from('master_profiles')
+      .upsert(
+        {
+          user_id: user.id,
+          approval_status: 'approved',
+          is_active: true,
+          approved_by: user.id,
+          approved_at: new Date().toISOString()
+        },
+        { onConflict: 'user_id' }
+      )
+
+    if (masterUpsertError) {
+      apiError(500, 'db.failed', 'Failed to auto-approve dev master profile', { reason: masterUpsertError.message })
+    }
   }
 
   const [{ data: masterProfile }, { data: adminProfile }] = await Promise.all([

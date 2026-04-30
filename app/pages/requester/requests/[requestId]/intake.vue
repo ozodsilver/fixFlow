@@ -1,55 +1,48 @@
 <script setup lang="ts">
-import type {
-  IntakeIntent,
-  IntakeMessage,
-  RequiredFieldKey,
-  RequestStatus,
-  ServiceDomain,
-  ServiceRequest
-} from '~/types/requester'
-
-interface ChatLine {
-  id: string
-  role: 'user' | 'ai' | 'system'
-  text: string
-  at: string
-}
+import type { RequestStatus, ServiceDomain, ServiceRequest } from '~/types/requester'
 
 const api = useRequesterApi()
 const route = useRoute()
 const { t, locale } = useAppI18n()
 
 const loading = ref(true)
-const sending = ref(false)
-const confirming = ref(false)
-const dispatching = ref(false)
+const savingAddress = ref(false)
+const submittingStructured = ref(false)
+const errorMessage = ref('')
 
 const request = ref<ServiceRequest | null>(null)
 const domainName = ref('')
-const messages = ref<ChatLine[]>([])
-const missingRequired = ref<RequiredFieldKey[]>([])
-const readyForDispatch = ref(false)
-const lastIntent = ref<IntakeIntent | null>(null)
-const errorMessage = ref('')
+const requesterName = ref('')
+const draftAddress = ref<{ address_text: string; address_lat: number; address_lng: number } | null>(null)
+
+const phoneInput = ref('')
+const visitTimeInput = ref('')
+const problemSummaryInput = ref('')
 
 const requestId = computed(() => String(route.params.requestId || ''))
 
 const intakeWritableStatuses: RequestStatus[] = ['draft', 'intake_in_progress', 'ready_for_dispatch']
 const intakeWritableStatusSet = new Set<RequestStatus>(intakeWritableStatuses)
 
-const canUseChat = computed(() => {
+const canFillForm = computed(() => {
   if (!request.value) return false
   return intakeWritableStatusSet.has(request.value.status)
 })
 
-const canConfirm = computed(() => {
-  if (!request.value || confirming.value || dispatching.value) return false
-  return readyForDispatch.value && request.value.status !== 'dispatched'
+const greetingText = computed(() => {
+  const name = requesterName.value ? `, ${requesterName.value}` : ''
+  if (locale.value === 'ru') return `Здравствуйте${name}. Пожалуйста, заполните форму с вашими данными.`
+  return `Салом${name}. Илтимос, маълумотларингизни формага киритинг.`
 })
 
-const canDispatch = computed(() => {
-  if (!request.value || dispatching.value) return false
-  return request.value.status === 'ready_for_dispatch'
+const submitDisabled = computed(() => {
+  if (!request.value || !canFillForm.value) return true
+  if (!phoneInput.value.trim() || !visitTimeInput.value.trim() || !problemSummaryInput.value.trim()) return true
+  const hasSavedAddress =
+    !!request.value.address_text && request.value.address_lat !== null && request.value.address_lng !== null
+  const hasDraftAddress = !!draftAddress.value?.address_text
+  if (!hasSavedAddress && !hasDraftAddress) return true
+  return submittingStructured.value
 })
 
 const statusLabel = (status: RequestStatus) => {
@@ -64,7 +57,6 @@ const statusLabel = (status: RequestStatus) => {
     closed_canceled_admin: t('requester.statusClosedCanceledAdmin'),
     closed_unfulfilled: t('requester.statusClosedUnfulfilled')
   }
-
   return map[status] || status
 }
 
@@ -76,119 +68,45 @@ const statusToneClass = (status: RequestStatus) => {
   return 'bg-slate-100 text-slate-700'
 }
 
-const summaryLabels = computed(() => ({
-  id: t('requester.summaryId'),
-  status: t('requester.summaryStatus'),
-  summary: t('requester.summaryProblem'),
-  address: t('requester.summaryAddress')
-}))
-
-const resolveFieldLabel = (field: RequiredFieldKey) => t(`fields.${field}`)
-
-const makeIdempotencyKey = () => {
-  if (process.client && typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
-    return crypto.randomUUID()
-  }
-  return `${Date.now()}-${Math.random().toString(36).slice(2)}`
-}
-
-const pushMessage = (role: ChatLine['role'], text: string) => {
-  messages.value.push({
-    id: makeIdempotencyKey(),
-    role,
-    text,
-    at: new Date().toISOString()
-  })
-}
-
-const formatTime = (iso: string) =>
-  new Date(iso).toLocaleTimeString(locale.value === 'ru' ? 'ru-RU' : 'uz-Cyrl-UZ', {
-    hour: '2-digit',
-    minute: '2-digit'
-  })
-
 const loadDomain = async (domainId: number) => {
   try {
     const domains = await api.getServiceDomains()
     const selected = domains.data.find((item: ServiceDomain) => item.id === domainId)
-    if (!selected) {
-      domainName.value = `#${domainId}`
-      return
-    }
-
-    domainName.value = locale.value === 'ru' ? selected.name_ru : selected.name_uz_cyrl
+    domainName.value = selected ? (locale.value === 'ru' ? selected.name_ru : selected.name_uz_cyrl) : `#${domainId}`
   }
   catch {
     domainName.value = `#${domainId}`
   }
 }
 
+const loadRequesterName = async () => {
+  try {
+    const bootstrap = await api.bootstrap()
+    requesterName.value = bootstrap.data.user.display_name?.trim() || ''
+  }
+  catch {
+    requesterName.value = ''
+  }
+}
+
 const syncFromRequest = (value: ServiceRequest) => {
   request.value = value
-  readyForDispatch.value = value.status === 'ready_for_dispatch'
-  if (value.status === 'ready_for_dispatch') {
-    missingRequired.value = []
+  if (value.phone_e164 && !phoneInput.value) phoneInput.value = value.phone_e164
+  if (value.visit_time_at && !visitTimeInput.value) {
+    const dt = new Date(value.visit_time_at)
+    const local = new Date(dt.getTime() - dt.getTimezoneOffset() * 60000).toISOString().slice(0, 16)
+    visitTimeInput.value = local
   }
-}
-
-const hydrateFromHistory = (history: IntakeMessage[]) => {
-  if (history.length === 0) {
-    messages.value = []
-    lastIntent.value = null
-    if (!readyForDispatch.value) {
-      missingRequired.value = []
-    }
-    return
-  }
-
-  messages.value = history.map((item) => ({
-    id: String(item.id),
-    role: item.sender,
-    text: item.message_text,
-    at: item.created_at
-  }))
-
-  const latestWithSnapshot = [...history].reverse().find((item) => !!item.validation_snapshot)
-  if (!latestWithSnapshot?.validation_snapshot) {
-    return
-  }
-
-  const snapshot = latestWithSnapshot.validation_snapshot
-  if (snapshot.intent) {
-    lastIntent.value = snapshot.intent
-  }
-
-  if (snapshot.ready_for_dispatch === true || request.value?.status === 'ready_for_dispatch') {
-    readyForDispatch.value = true
-    missingRequired.value = []
-    return
-  }
-
-  if (Array.isArray(snapshot.missing_required)) {
-    missingRequired.value = snapshot.missing_required
-  }
-}
-
-const loadIntakeHistory = async () => {
-  if (!request.value) return
-
-  const historyRes = await api.getIntakeMessages(request.value.id)
-  hydrateFromHistory(historyRes.data.items)
-
-  if (messages.value.length === 0) {
-    pushMessage('ai', t('requester.chatNoMessages'))
-  }
+  if (value.problem_summary && !problemSummaryInput.value) problemSummaryInput.value = value.problem_summary
 }
 
 const loadRequest = async () => {
   loading.value = true
   errorMessage.value = ''
-
   try {
     const result = await api.getRequest(requestId.value)
     syncFromRequest(result.data)
-    await loadDomain(result.data.domain_id)
-    await loadIntakeHistory()
+    await Promise.all([loadDomain(result.data.domain_id), loadRequesterName()])
   }
   catch (error: unknown) {
     errorMessage.value =
@@ -199,75 +117,55 @@ const loadRequest = async () => {
   }
 }
 
-const submitMessage = async (text: string) => {
-  if (!request.value || !canUseChat.value) return
-
-  sending.value = true
+const saveAddressFromMap = async (payload: { address_text: string; address_lat: number; address_lng: number }) => {
+  if (!request.value) return
+  savingAddress.value = true
   errorMessage.value = ''
-  const optimisticId = makeIdempotencyKey()
-  messages.value.push({
-    id: optimisticId,
-    role: 'user',
-    text,
-    at: new Date().toISOString()
-  })
-
   try {
-    const result = await api.postIntakeMessage(request.value.id, {
-      text,
-      idempotency_key: makeIdempotencyKey()
-    })
-
+    const result = await api.setAddressFromMap(request.value.id, payload)
     syncFromRequest(result.data.request)
-    missingRequired.value = result.data.missing_required
-    readyForDispatch.value = result.data.ready_for_dispatch
-    lastIntent.value = result.data.intent
-    pushMessage('ai', result.data.ai_reply)
   }
   catch (error: unknown) {
-    messages.value = messages.value.filter(item => item.id !== optimisticId)
     errorMessage.value =
       (error as { data?: { error?: { message?: string } } })?.data?.error?.message || t('common.unexpectedError')
   }
   finally {
-    sending.value = false
+    savingAddress.value = false
   }
 }
 
-const confirmIntake = async () => {
-  if (!request.value || !canConfirm.value) return
+const setDraftAddress = (payload: { address_text: string; address_lat: number; address_lng: number }) => {
+  draftAddress.value = payload
+}
 
-  confirming.value = true
+const submitStructuredForm = async () => {
+  if (!request.value || submitDisabled.value) return
+
+  submittingStructured.value = true
   errorMessage.value = ''
-
   try {
-    const result = await api.confirmIntake(request.value.id)
-    request.value = {
-      ...request.value,
-      status: result.data.status
+    if (
+      (!request.value.address_text || request.value.address_lat === null || request.value.address_lng === null) &&
+      draftAddress.value
+    ) {
+      const saved = await api.setAddressFromMap(request.value.id, draftAddress.value)
+      syncFromRequest(saved.data.request)
     }
-    readyForDispatch.value = true
-    missingRequired.value = []
-    lastIntent.value = 'confirm'
-    pushMessage('system', t('requester.confirmedIntake'))
-  }
-  catch (error: unknown) {
-    errorMessage.value =
-      (error as { data?: { error?: { message?: string } } })?.data?.error?.message || t('common.unexpectedError')
-  }
-  finally {
-    confirming.value = false
-  }
-}
 
-const dispatch = async () => {
-  if (!request.value || !canDispatch.value) return
+    if (!request.value.address_text || request.value.address_lat === null || request.value.address_lng === null) {
+      errorMessage.value = t('requester.formAddressRequired')
+      return
+    }
 
-  dispatching.value = true
-  errorMessage.value = ''
-
-  try {
-    await api.dispatchRequest(request.value.id, makeIdempotencyKey())
+    const result = await api.submitStructuredIntake(request.value.id, {
+      phone: phoneInput.value.trim(),
+      visit_time_at: new Date(visitTimeInput.value).toISOString(),
+      problem_summary: problemSummaryInput.value.trim(),
+      address_text: request.value.address_text!,
+      address_lat: request.value.address_lat!,
+      address_lng: request.value.address_lng!
+    })
+    syncFromRequest(result.data.request)
     await navigateTo(`/requester/requests/${request.value.id}/status`)
   }
   catch (error: unknown) {
@@ -275,7 +173,7 @@ const dispatch = async () => {
       (error as { data?: { error?: { message?: string } } })?.data?.error?.message || t('common.unexpectedError')
   }
   finally {
-    dispatching.value = false
+    submittingStructured.value = false
   }
 }
 
@@ -284,7 +182,13 @@ onMounted(loadRequest)
 
 <template>
   <div class="ff-shell flex min-h-dvh flex-col">
-    <AppHeader :title="t('requester.chatTitle')" :subtitle="t('requester.chatHint')" logo-text="FF" />
+    <AppHeader
+      :title="t('requester.chatTitle')"
+      :subtitle="t('requester.chatHint')"
+      logo-text="FF"
+      :show-back-button="true"
+      back-to="/requester"
+    />
 
     <main class="flex-1 space-y-4 px-4 py-4">
       <LoadingState v-if="loading" :label="t('requester.loadingRequest')" />
@@ -298,7 +202,7 @@ onMounted(loadRequest)
       />
 
       <template v-else-if="request">
-        <section class="ff-panel-soft ff-rise rounded-2xl p-3">
+        <section class="ff-panel-soft ff-rise rounded-3xl p-3">
           <div class="flex items-start justify-between gap-3">
             <div class="min-w-0">
               <p class="text-xs font-semibold uppercase tracking-wide text-slate-500">{{ t('requester.domainLabel') }}</p>
@@ -310,32 +214,63 @@ onMounted(loadRequest)
           </div>
         </section>
 
-        <RequestSummaryCard
-          :title="t('requester.summaryTitle')"
-          :request="request"
-          :labels="summaryLabels"
-          :status-text="statusLabel(request.status)"
-          :status-class="statusToneClass(request.status)"
-        />
+        <section class="ff-panel-soft ff-rise rounded-3xl p-4">
+          <p class="text-sm font-bold text-slate-900">{{ greetingText }}</p>
+        </section>
 
-        <IntakeProgressHint
-          v-if="missingRequired.length > 0"
-          :title="t('requester.missingTitle')"
-          :missing-fields="missingRequired"
-          :resolve-label="resolveFieldLabel"
-        />
+        <section class="ff-rise rounded-3xl border border-emerald-200 bg-gradient-to-br from-emerald-50 to-cyan-50 p-4">
+          <p class="text-xs font-bold uppercase tracking-wide text-emerald-700">{{ t('requester.readyToDispatch') }}</p>
+          <div class="mt-3 space-y-3">
+            <UFormField :label="t('requester.formPhone')" required>
+              <UInput
+                v-model="phoneInput"
+                :placeholder="t('requester.formPhone')"
+                :disabled="!canFillForm"
+                size="xl"
+                variant="outline"
+                class="w-full"
+              />
+            </UFormField>
 
-        <section v-if="readyForDispatch" class="ff-rise rounded-2xl border border-emerald-200 bg-emerald-50/95 p-3">
-          <p class="text-sm font-bold text-emerald-800">{{ t('requester.readyToDispatch') }}</p>
-          <div class="mt-3 flex flex-wrap gap-2">
-            <UButton :loading="confirming" :disabled="!canConfirm" color="neutral" variant="soft" class="font-semibold" @click="confirmIntake">
-              {{ t('requester.confirmIntake') }}
-            </UButton>
-            <UButton :loading="dispatching" :disabled="!canDispatch" color="primary" class="font-semibold" @click="dispatch">
-              {{ t('requester.dispatch') }}
-            </UButton>
-            <UButton color="neutral" variant="ghost" class="font-semibold" @click="navigateTo(`/requester/requests/${request.id}/status`)">
-              {{ t('requester.goStatus') }}
+            <UFormField :label="t('requester.formVisitTime')" required>
+              <UInput
+                v-model="visitTimeInput"
+                type="datetime-local"
+                :disabled="!canFillForm"
+                size="xl"
+                variant="outline"
+                class="w-full"
+              />
+            </UFormField>
+
+            <AddressMapPicker
+              :label="t('requester.mapAddressTitle')"
+              :save-label="t('requester.mapAddressSave')"
+              :locate-label="t('requester.mapLocateMe')"
+              :loading="savingAddress"
+              :initial-lat="request.address_lat"
+              :initial-lng="request.address_lng"
+              :initial-address="request.address_text"
+              @save="saveAddressFromMap"
+              @change="setDraftAddress"
+            />
+
+            <UFormField :label="t('requester.formProblem')" required>
+              <UTextarea
+                v-model="problemSummaryInput"
+                :rows="4"
+                :placeholder="t('requester.formProblem')"
+                :disabled="!canFillForm"
+                size="xl"
+                variant="outline"
+                class="w-full"
+                autoresize
+              />
+            </UFormField>
+          </div>
+          <div class="mt-4 flex flex-wrap gap-2">
+            <UButton :loading="submittingStructured" :disabled="submitDisabled" color="primary" class="font-semibold" @click="submitStructuredForm">
+              {{ t('requester.formSubmit') }}
             </UButton>
           </div>
         </section>
@@ -347,29 +282,7 @@ onMounted(loadRequest)
           :retry-label="t('common.retry')"
           @retry="loadRequest"
         />
-
-        <section class="ff-panel rounded-2xl p-3">
-          <p class="text-xs font-bold uppercase tracking-wide text-slate-500">{{ t('requester.chatTitle') }}</p>
-
-          <div class="ff-scroll mt-2 max-h-[46dvh] min-h-40 space-y-2 overflow-y-auto rounded-xl bg-slate-50 p-2.5">
-            <ChatMessageBubble
-              v-for="line in messages"
-              :key="line.id"
-              :role="line.role === 'system' ? 'ai' : line.role"
-              :text="line.text"
-              :time="formatTime(line.at)"
-            />
-          </div>
-        </section>
       </template>
     </main>
-
-    <ChatComposer
-      :placeholder="canUseChat ? t('requester.composerPlaceholder') : t('requester.composerDisabled')"
-      :send-label="t('common.send')"
-      :loading="sending"
-      :disabled="!canUseChat"
-      @send="submitMessage"
-    />
   </div>
 </template>

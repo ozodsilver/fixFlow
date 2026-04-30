@@ -20,10 +20,10 @@ const isSystem = computed(() => props.role === 'system')
       class="max-w-[88%] rounded-2xl px-3.5 py-2.5 text-sm leading-5"
       :class="[
         isUser
-          ? 'rounded-br-md bg-gradient-to-br from-emerald-600 to-teal-600 text-white shadow-sm'
+          ? 'rounded-br-md bg-gradient-to-br from-cyan-600 via-teal-600 to-emerald-600 text-white shadow-md'
           : isSystem
-            ? 'rounded-bl-md border border-amber-200 bg-amber-50 text-amber-900 shadow-sm'
-            : 'rounded-bl-md border border-slate-200 bg-white text-slate-800 shadow-sm'
+            ? 'rounded-bl-md border border-amber-200 bg-gradient-to-br from-amber-50 to-amber-100 text-amber-900 shadow-sm'
+            : 'rounded-bl-md border border-slate-200 bg-gradient-to-br from-white to-slate-50 text-slate-800 shadow-sm'
       ]"
     >
       <p class="whitespace-pre-wrap">{{ props.text }}</p>

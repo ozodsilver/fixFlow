@@ -61,10 +61,17 @@ export function setSessionCookie(event: H3Event, userId: string, telegramUserId:
   const exp = Math.floor(Date.now() / 1000) + SESSION_TTL_SECONDS
   const token = createSessionToken({ uid: userId, tgid: telegramUserId, exp }, config.sessionSecret)
 
+  const forwardedProto = event.node.req.headers['x-forwarded-proto']
+  const proto = Array.isArray(forwardedProto) ? forwardedProto[0] : forwardedProto
+  const isHttps = proto === 'https'
+  const useSecureCookie = process.env.NODE_ENV === 'production' || isHttps
+
   setCookie(event, COOKIE_NAME, token, {
     httpOnly: true,
-    sameSite: 'lax',
-    secure: process.env.NODE_ENV === 'production',
+    // Telegram WebView can run the app in an embedded context; SameSite=None is
+    // required there so session cookie is sent on API calls.
+    sameSite: useSecureCookie ? 'none' : 'lax',
+    secure: useSecureCookie,
     path: '/',
     maxAge: SESSION_TTL_SECONDS
   })

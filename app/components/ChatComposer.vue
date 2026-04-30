@@ -28,8 +28,8 @@ const submit = () => {
 </script>
 
 <template>
-  <div class="sticky bottom-0 border-t border-white/50 bg-white/80 p-3 backdrop-blur-xl">
-    <div class="ff-shell ff-panel-soft flex items-end gap-2 rounded-2xl p-2">
+  <div class="sticky bottom-0 border-t border-slate-200 bg-white p-3">
+    <div class="ff-shell ff-panel-soft flex items-end gap-2 rounded-3xl p-2.5">
       <UTextarea
         v-model="text"
         :rows="2"
@@ -43,7 +43,7 @@ const submit = () => {
         :loading="props.loading"
         :disabled="props.disabled"
         color="primary"
-        class="h-10 shrink-0 rounded-xl px-4 font-bold"
+        class="h-10 shrink-0 rounded-xl bg-gradient-to-r from-cyan-600 to-emerald-600 px-4 font-bold text-white shadow-sm"
         @click="submit"
       >
         {{ props.sendLabel }}

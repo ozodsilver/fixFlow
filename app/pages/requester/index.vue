@@ -30,11 +30,11 @@ const statusLabel = (status: RequestStatus) => {
 }
 
 const statusToneClass = (status: RequestStatus) => {
-  if (status === 'draft' || status === 'intake_in_progress') return 'bg-amber-100 text-amber-800'
-  if (status === 'ready_for_dispatch' || status === 'dispatched') return 'bg-sky-100 text-sky-800'
+  if (status === 'draft' || status === 'intake_in_progress') return 'border border-indigo-200 bg-indigo-50 text-indigo-800'
+  if (status === 'ready_for_dispatch' || status === 'dispatched') return 'border border-sky-200 bg-sky-50 text-sky-800'
   if (status === 'in_fulfillment') return 'bg-emerald-100 text-emerald-800'
   if (status === 'closed_completed') return 'bg-teal-100 text-teal-800'
-  return 'bg-slate-100 text-slate-700'
+  return 'border border-slate-200 bg-slate-50 text-slate-700'
 }
 
 const intakeStatuses = new Set<RequestStatus>(['draft', 'intake_in_progress', 'ready_for_dispatch'])
@@ -100,19 +100,33 @@ const waitForTelegramInitData = async (): Promise<string | null> => {
 const tryTelegramAuth = async () => {
   if (!process.client) return
 
+  const runtimeConfig = useRuntimeConfig()
   const webApp = (window as Window & { Telegram?: { WebApp?: { ready?: () => void } } }).Telegram?.WebApp
   const initData = await waitForTelegramInitData()
-  if (!initData) {
-    throw new Error('auth.invalid_init_data')
+  if (initData) {
+    webApp?.ready?.()
+    sessionStorage.setItem('ff_tg_init_data', initData)
+
+    await api.initAuth({
+      init_data: initData,
+      locale: locale.value
+    })
+    return
   }
 
-  webApp?.ready?.()
-  sessionStorage.setItem('ff_tg_init_data', initData)
+  if (runtimeConfig.public.allowDevAuthBypass) {
+    const devTelegramUserId = Number(sessionStorage.getItem('ff_dev_tg_uid') || '900001')
+    sessionStorage.setItem('ff_dev_tg_uid', String(devTelegramUserId))
 
-  await api.initAuth({
-    init_data: initData,
-    locale: locale.value
-  })
+    await api.initAuth({
+      telegram_user_id: devTelegramUserId,
+      display_name: 'Dev Local User',
+      locale: locale.value
+    })
+    return
+  }
+
+  throw new Error('auth.invalid_init_data')
 }
 
 const init = async () => {
@@ -193,9 +207,9 @@ onMounted(init)
     <AppHeader :title="t('common.appName')" :subtitle="t('requester.homeSubtitle')" logo-text="FF" />
 
     <main class="space-y-5 px-4 py-4">
-      <section class="ff-panel-soft ff-rise rounded-2xl p-4">
-        <div class="flex items-start gap-3">
-          <div class="rounded-xl bg-emerald-100 p-2.5 text-emerald-700">
+      <section class="ff-panel-soft ff-rise rounded-3xl p-4">
+        <div class="flex items-center gap-3">
+          <div class="ff-glow flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-cyan-500 to-emerald-500 text-white">
             <UIcon name="i-lucide-life-buoy" class="size-5" />
           </div>
           <div class="min-w-0">
@@ -224,7 +238,7 @@ onMounted(init)
       <div v-else class="space-y-3">
         <div class="flex items-center justify-between">
           <h2 class="ff-section-title">{{ t('requester.homeTitle') }}</h2>
-          <span class="rounded-full bg-slate-100 px-2.5 py-1 text-[11px] font-bold text-slate-600">
+          <span class="rounded-full border border-cyan-100 bg-cyan-50 px-2.5 py-1 text-[11px] font-bold text-cyan-700">
             {{ domains.length }}
           </span>
         </div>
@@ -238,9 +252,6 @@ onMounted(init)
           @select="openDomain"
         />
 
-        <p v-if="creatingRequestDomainId" class="text-xs text-slate-500">
-          {{ t('common.loading') }}
-        </p>
       </div>
 
       <section v-if="!loading" class="space-y-2">
@@ -262,7 +273,7 @@ onMounted(init)
             v-for="request in topRequests"
             :key="request.id"
             type="button"
-            class="ff-panel ff-rise w-full rounded-2xl p-3 text-left transition hover:-translate-y-0.5 hover:border-emerald-300"
+            class="ff-panel ff-rise w-full rounded-2xl p-3 text-left transition hover:-translate-y-0.5 hover:border-cyan-300"
             @click="navigateTo(requestOpenPath(request))"
           >
             <div class="flex items-start justify-between gap-2">
@@ -277,7 +288,7 @@ onMounted(init)
                   </span>
                 </p>
               </div>
-              <span class="rounded-full bg-emerald-50 px-2 py-1 text-[11px] font-medium text-emerald-700">
+              <span class="rounded-full border border-cyan-100 bg-cyan-50 px-2 py-1 text-[11px] font-medium text-cyan-700">
                 {{ t('common.open') }}
               </span>
             </div>
@@ -285,5 +296,16 @@ onMounted(init)
         </div>
       </section>
     </main>
+
+    <div
+      v-if="creatingRequestDomainId"
+      class="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/30"
+    >
+      <div class="ff-panel-soft rounded-2xl p-4">
+        <div class="ff-glow flex h-14 w-14 items-center justify-center rounded-2xl bg-gradient-to-br from-cyan-500 to-emerald-500">
+          <UIcon name="i-lucide-loader-2" class="size-7 animate-spin text-white [--icon-stroke-width:2.5]" />
+        </div>
+      </div>
+    </div>
   </div>
 </template>
