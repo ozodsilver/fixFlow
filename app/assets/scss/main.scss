@@ -83,6 +83,29 @@ body::before {
   color: #ffffff;
 }
 
+.ff-service-card {
+  position: relative;
+  overflow: hidden;
+  border: 1px solid rgba(255, 255, 255, 0.72);
+  background:
+    radial-gradient(140px 90px at 18% 10%, rgba(255, 255, 255, 0.9), transparent 70%),
+    linear-gradient(145deg, rgba(255, 255, 255, 0.72), rgba(232, 241, 236, 0.86));
+  box-shadow: 10px 12px 26px rgba(138, 153, 143, 0.22), -8px -8px 18px rgba(255, 255, 255, 0.84);
+  backdrop-filter: blur(16px);
+}
+
+.ff-service-card::after {
+  position: absolute;
+  inset: auto -28px -36px auto;
+  width: 96px;
+  height: 96px;
+  pointer-events: none;
+  content: "";
+  border-radius: 999px;
+  background: rgba(122, 98, 234, 0.08);
+  filter: blur(1px);
+}
+
 .ff-primary-gradient {
   background: #7a62ea;
   color: #ffffff;

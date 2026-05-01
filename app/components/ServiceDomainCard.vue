@@ -23,23 +23,22 @@ const domainIcon = computed(() => {
 <template>
   <button
     type="button"
-    class="ff-panel-soft ff-rise group w-full rounded-[28px] p-4 text-left transition hover:-translate-y-0.5"
+    class="ff-service-card group min-h-[150px] w-full rounded-[26px] p-3 text-left transition hover:-translate-y-0.5"
     @click="emit('select', props.domain)"
   >
-    <div class="flex items-center justify-between gap-3">
-      <div class="flex min-w-0 items-center gap-3">
-        <div class="ff-icon-tile flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl">
-          <UIcon :name="domainIcon" class="size-4" />
+    <div class="flex h-full flex-col justify-between gap-3">
+      <div class="flex items-start justify-between gap-2">
+        <div class="ff-icon-tile flex h-14 w-14 shrink-0 items-center justify-center rounded-[22px]">
+          <UIcon :name="domainIcon" class="size-7" />
         </div>
-        <div class="min-w-0">
-          <p class="truncate text-sm font-extrabold text-[#2b2853]">{{ props.title }}</p>
-          <p v-if="props.subtitle" class="mt-1 text-xs leading-4 text-[#7d78a6]">{{ props.subtitle }}</p>
-        </div>
-      </div>
-      <div class="flex shrink-0 items-center">
-        <span class="ff-pressed flex h-8 w-8 items-center justify-center rounded-full">
-          <UIcon name="i-lucide-chevron-right" class="size-4 text-[#7358e8] transition group-hover:text-[#ff8f9c]" />
+        <span class="ff-pressed flex h-8 w-8 shrink-0 items-center justify-center rounded-full">
+          <UIcon name="i-lucide-chevron-right" class="size-5 text-[#7358e8] transition group-hover:text-[#ff8f9c]" />
         </span>
+      </div>
+
+      <div class="min-w-0">
+        <p class="line-clamp-2 text-[13px] font-extrabold leading-4 text-[#2b2853]">{{ props.title }}</p>
+        <p v-if="props.subtitle" class="mt-1 text-[11px] leading-4 text-[#7d78a6]">{{ props.subtitle }}</p>
       </div>
     </div>
   </button>

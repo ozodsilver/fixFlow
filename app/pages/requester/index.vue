@@ -37,14 +37,23 @@ const statusToneClass = (status: RequestStatus) => {
   return 'border border-[#ddd5ff] bg-[#f4f0ff] text-[#7d78a6]'
 }
 
-const intakeStatuses = new Set<RequestStatus>(['draft', 'intake_in_progress', 'ready_for_dispatch'])
-
 const requestOpenPath = (request: ServiceRequest) =>
-  intakeStatuses.has(request.status)
-    ? `/requester/requests/${request.id}/intake`
-    : `/requester/requests/${request.id}/status`
+  `/requester/requests/${request.id}/status`
 
 const topRequests = computed(() => requests.value.slice(0, 5))
+
+const formatRequestDate = (value: string) => {
+  const date = new Date(value)
+  if (Number.isNaN(date.getTime())) return value
+
+  return new Intl.DateTimeFormat(locale.value === 'ru' ? 'ru-RU' : 'uz-Cyrl-UZ', {
+    day: '2-digit',
+    month: '2-digit',
+    year: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit'
+  }).format(date)
+}
 
 const extractRawParam = (input: string, key: string): string | null => {
   const normalized = input.startsWith('?') || input.startsWith('#') ? input.slice(1) : input
@@ -243,14 +252,16 @@ onMounted(init)
           </span>
         </div>
 
-        <ServiceDomainCard
-          v-for="domain in domains"
-          :key="domain.id"
-          :domain="domain"
-          :title="localizedDomainName(domain)"
-          :subtitle="t('requester.openChat')"
-          @select="openDomain"
-        />
+        <div class="grid grid-cols-2 gap-3">
+          <ServiceDomainCard
+            v-for="domain in domains"
+            :key="domain.id"
+            :domain="domain"
+            :title="localizedDomainName(domain)"
+            :subtitle="t('requester.openChat')"
+            @select="openDomain"
+          />
+        </div>
 
       </div>
 
@@ -281,6 +292,9 @@ onMounted(init)
                 <p class="text-sm font-bold text-[#2b2853]">{{ request.public_code }}</p>
                 <p class="mt-1 truncate text-xs text-[#7d78a6]">
                   {{ request.problem_summary || t('requester.openChat') }}
+                </p>
+                <p class="mt-1 text-xs font-medium text-[#8f88ad]">
+                  {{ formatRequestDate(request.created_at) }}
                 </p>
                 <p class="mt-1">
                   <span class="ff-status-chip" :class="statusToneClass(request.status)">

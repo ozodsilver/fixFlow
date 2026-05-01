@@ -6,7 +6,6 @@ const route = useRoute()
 const { t, locale } = useAppI18n()
 
 const loading = ref(true)
-const savingAddress = ref(false)
 const submittingStructured = ref(false)
 const errorMessage = ref('')
 
@@ -172,23 +171,6 @@ const loadRequest = async () => {
   }
 }
 
-const saveAddressFromMap = async (payload: { address_text: string; address_lat: number; address_lng: number }) => {
-  if (!request.value) return
-  savingAddress.value = true
-  errorMessage.value = ''
-  try {
-    const result = await api.setAddressFromMap(request.value.id, payload)
-    syncFromRequest(result.data.request)
-  }
-  catch (error: unknown) {
-    errorMessage.value =
-      (error as { data?: { error?: { message?: string } } })?.data?.error?.message || t('common.unexpectedError')
-  }
-  finally {
-    savingAddress.value = false
-  }
-}
-
 const setDraftAddress = (payload: { address_text: string; address_lat: number; address_lng: number }) => {
   draftAddress.value = payload
 }
@@ -295,7 +277,27 @@ onMounted(loadRequest)
               </p>
             </UFormField>
 
-            <UFormField :label="t('requester.formVisitTime')" required>
+            <UFormField required>
+              <template #label>
+                <span class="inline-flex items-center gap-1.5">
+                  <span>{{ t('requester.formVisitTime') }}</span>
+                  <span class="group relative inline-flex">
+                    <button
+                      type="button"
+                      class="inline-flex size-5 items-center justify-center rounded-full text-slate-400 transition hover:bg-slate-100 hover:text-[#5c4bd6] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#7358e8]"
+                      :aria-label="t('requester.formVisitTimeHint')"
+                    >
+                      <UIcon name="i-lucide-info" class="size-4" />
+                    </button>
+                    <span
+                      class="pointer-events-none absolute bottom-full left-1/2 z-30 mb-2 w-64 -translate-x-1/2 rounded-xl bg-[#2b2853] px-3 py-2 text-center text-xs font-medium leading-4 text-white opacity-0 shadow-lg transition-opacity group-hover:opacity-100 group-focus-within:opacity-100"
+                      role="tooltip"
+                    >
+                      {{ t('requester.formVisitTimeHint') }}
+                    </span>
+                  </span>
+                </span>
+              </template>
               <UInput
                 v-model="visitTimeInput"
                 type="datetime-local"
@@ -312,13 +314,10 @@ onMounted(loadRequest)
 
             <AddressMapPicker
               :label="t('requester.mapAddressTitle')"
-              :save-label="t('requester.mapAddressSave')"
               :locate-label="t('requester.mapLocateMe')"
-              :loading="savingAddress"
               :initial-lat="request.address_lat"
               :initial-lng="request.address_lng"
               :initial-address="request.address_text"
-              @save="saveAddressFromMap"
               @change="setDraftAddress"
             />
 

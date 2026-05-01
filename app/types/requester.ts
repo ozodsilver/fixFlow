@@ -127,9 +127,11 @@ export interface IntakeMessage {
 
 export interface DispatchReply {
   request_id: string
-  dispatch_id: string
+  review_id?: string
+  dispatch_id: string | null
   status: RequestStatus
-  expires_at: string
+  expires_at: string | null
+  admin_review_required?: boolean
 }
 
 export interface RequestListData {

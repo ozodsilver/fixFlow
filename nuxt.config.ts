@@ -29,6 +29,7 @@ export default defineNuxtConfig({
     adminLogin: process.env.ADMIN_LOGIN || '',
     adminPassword: process.env.ADMIN_PASSWORD || '',
     telegramBotToken: process.env.TELEGRAM_BOT_TOKEN || '',
+    telegramAdminChatId: process.env.TELEGRAM_ADMIN_CHAT_ID || '0',
     telegramMastersGroupId: process.env.TELEGRAM_MASTERS_GROUP_ID || '0',
     miniAppBaseUrl: process.env.MINI_APP_BASE_URL || '',
     telegramBotUsername: process.env.TELEGRAM_BOT_USERNAME || '',

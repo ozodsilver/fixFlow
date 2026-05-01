@@ -8,7 +8,6 @@ interface PickedAddress {
 const props = withDefaults(
   defineProps<{
     label: string
-    saveLabel: string
     locateLabel?: string
     loading?: boolean
     initialLat?: number | null
@@ -25,7 +24,6 @@ const props = withDefaults(
 )
 
 const emit = defineEmits<{
-  save: [PickedAddress]
   change: [PickedAddress]
 }>()
 
@@ -39,10 +37,6 @@ const locateError = ref('')
 
 let map: any = null
 let marker: any = null
-
-const canSave = computed(() =>
-  !!addressText.value.trim() && lat.value !== null && lng.value !== null && !props.loading
-)
 
 const formatResolvedAddress = (payload: any) => {
   const addr = payload?.address || {}
@@ -141,16 +135,6 @@ const placeMarker = async (L: any, point: { lat: number; lng: number }) => {
       address_lng: lng.value
     })
   }
-}
-
-const saveAddress = () => {
-  if (!canSave.value || lat.value === null || lng.value === null) return
-  locateError.value = ''
-  emit('save', {
-    address_text: addressText.value.trim(),
-    address_lat: lat.value,
-    address_lng: lng.value
-  })
 }
 
 watch(addressText, () => {
@@ -253,9 +237,6 @@ onMounted(async () => {
         @click="locateMe"
       >
         {{ props.locateLabel }}
-      </UButton>
-      <UButton color="primary" :disabled="!canSave" :loading="props.loading" @click="saveAddress">
-        {{ props.saveLabel }}
       </UButton>
     </div>
     <p v-if="locateError" class="mt-2 text-xs font-medium text-rose-600">

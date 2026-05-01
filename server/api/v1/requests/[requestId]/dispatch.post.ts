@@ -3,38 +3,11 @@ import { apiError, ok } from '~~/server/utils/api'
 import { requireOwnedRequest } from '~~/server/utils/auth'
 import { getSupabaseAdmin } from '~~/server/utils/supabase-admin'
 import { computeMissingFields } from '~~/server/utils/intake'
-import { buildDispatchPreviewText, sendTelegramDispatchMessage } from '~~/server/utils/telegram-dispatch'
+import { createPendingDispatchReview } from '~~/server/utils/dispatch-flow'
+import { buildAdminReviewNotificationText, sendTelegramUserMessage } from '~~/server/utils/telegram-dispatch'
 
 interface DispatchBody {
   idempotency_key?: string
-}
-
-function buildClaimButton(config: ReturnType<typeof useRuntimeConfig>, dispatchId: string) {
-  const startApp = encodeURIComponent(`dispatch_${dispatchId}`)
-  const botUsername = String(config.telegramBotUsername || '').trim().replace(/^@/, '')
-  const miniAppShortName = String(config.telegramMiniAppShortName || '').trim()
-
-  const tMeDirectUrl =
-    botUsername && miniAppShortName ? `https://t.me/${botUsername}/${miniAppShortName}?startapp=${startApp}` : undefined
-  const tMeMainUrl = botUsername ? `https://t.me/${botUsername}?startapp=${startApp}` : undefined
-
-  if (tMeDirectUrl) {
-    return {
-      url: tMeDirectUrl
-    }
-  }
-  if (tMeMainUrl) {
-    return {
-      url: tMeMainUrl
-    }
-  }
-  if (config.miniAppBaseUrl) {
-    const base = String(config.miniAppBaseUrl).replace(/\/+$/, '')
-    return {
-      url: `${base}/master/dispatches/${dispatchId}?dispatch_id=${dispatchId}`
-    }
-  }
-  return null
 }
 
 export default defineEventHandler(async (event) => {
@@ -49,9 +22,8 @@ export default defineEventHandler(async (event) => {
     apiError(422, 'validation.failed', 'idempotency_key is required')
   }
 
-  const { request } = await requireOwnedRequest(event, requestId)
+  const { ctx, request } = await requireOwnedRequest(event, requestId)
   const supabase = getSupabaseAdmin(event)
-  const config = useRuntimeConfig(event)
 
   const missing = computeMissingFields({
     domain_id: request.domain_id,
@@ -77,64 +49,10 @@ export default defineEventHandler(async (event) => {
     apiError(409, 'dispatch.max_attempts_exhausted', 'Max dispatch attempts exhausted')
   }
 
-  const attemptNo = request.current_dispatch_attempt + 1
-  const expiresAt = new Date(Date.now() + 15 * 60 * 1000).toISOString()
-
-  const { data: dispatch, error: dispatchError } = await supabase
-    .from('dispatch_records')
-    .insert({
-      request_id: request.id,
-      attempt_no: attemptNo,
-      telegram_group_id: Number(config.telegramMastersGroupId || 0),
-      status: 'pending_send',
-      expires_at: expiresAt
-    })
-    .select('id, status, expires_at')
-    .single()
-
-  if (dispatchError || !dispatch) {
-    apiError(500, 'db.failed', 'Failed to create dispatch record', { reason: dispatchError?.message })
-  }
-
-  if (!config.telegramBotToken || !config.telegramMastersGroupId || Number(config.telegramMastersGroupId) === 0) {
-    apiError(500, 'config.missing', 'TELEGRAM_BOT_TOKEN or TELEGRAM_MASTERS_GROUP_ID is missing')
-  }
-
-  const previewText = await buildDispatchPreviewText(event, {
-    public_code: request.public_code,
-    domain_id: request.domain_id,
-    problem_summary: request.problem_summary,
-    visit_time_mode: request.visit_time_mode,
-    visit_time_at: request.visit_time_at,
-    locale: request.locale
-  })
-
-  const claimButton = buildClaimButton(config, dispatch.id)
-  const claimButtonText = request.locale === 'ru' ? 'Принять заказ' : 'Буюртмани қабул қилиш'
-  const sent = await sendTelegramDispatchMessage(
-    config.telegramBotToken,
-    Number(config.telegramMastersGroupId),
-    previewText,
-    claimButton ? { text: claimButtonText, ...claimButton } : undefined
-  )
-  if (!sent.ok) {
-    await supabase.from('dispatch_records').update({ status: 'failed_send' }).eq('id', dispatch.id)
-    apiError(500, 'dispatch.send_failed', 'Failed to send message to Telegram group', { reason: sent.error })
-  }
-
-  await supabase
-    .from('dispatch_records')
-    .update({
-      status: 'open',
-      telegram_message_id: sent.messageId
-    })
-    .eq('id', dispatch.id)
-
   const { error: requestUpdateError } = await supabase
     .from('service_requests')
     .update({
-      status: 'dispatched',
-      current_dispatch_attempt: attemptNo
+      status: 'ready_for_dispatch'
     })
     .eq('id', request.id)
 
@@ -142,10 +60,34 @@ export default defineEventHandler(async (event) => {
     apiError(500, 'db.failed', 'Failed to update request status', { reason: requestUpdateError.message })
   }
 
+  const reviewId = await createPendingDispatchReview(event, request)
+
+  const config = useRuntimeConfig(event)
+  const adminChatId = Number(config.telegramAdminChatId)
+  if (config.telegramBotToken && Number.isFinite(adminChatId) && adminChatId !== 0) {
+    const sent = await sendTelegramUserMessage(
+      config.telegramBotToken,
+      adminChatId,
+      buildAdminReviewNotificationText({
+        public_code: request.public_code,
+        requester_name: ctx.user.display_name,
+        phone_e164: request.phone_e164,
+        problem_summary: request.problem_summary,
+        locale: request.locale
+      })
+    )
+
+    if (!sent.ok) {
+      console.warn('telegram.admin_review_notify_failed', sent.error)
+    }
+  }
+
   return ok({
     request_id: request.id,
-    dispatch_id: dispatch.id,
-    status: 'dispatched',
-    expires_at: dispatch.expires_at
+    review_id: reviewId,
+    dispatch_id: null,
+    status: 'ready_for_dispatch',
+    expires_at: null,
+    admin_review_required: true
   })
 })

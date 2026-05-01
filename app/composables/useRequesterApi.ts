@@ -79,7 +79,7 @@ export function useRequesterApi() {
     })
 
   const submitStructuredIntake = (requestId: string, body: StructuredIntakeBody) =>
-    $fetch<ApiDataResponse<{ ai_reply: string; request: ServiceRequest; dispatch_id: string; expires_at: string }>>(
+    $fetch<ApiDataResponse<{ ai_reply: string; request: ServiceRequest; review_id?: string; dispatch_id: string | null; expires_at: string | null; admin_review_required?: boolean }>>(
       `/api/v1/requests/${requestId}/intake/structured`,
       {
         method: 'POST',

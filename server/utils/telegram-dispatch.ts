@@ -10,6 +10,14 @@ interface DispatchPreviewInput {
   locale: 'uz_cyrl' | 'ru'
 }
 
+interface AdminReviewNotificationInput {
+  public_code: string
+  requester_name: string
+  phone_e164?: string | null
+  problem_summary?: string | null
+  locale: 'uz_cyrl' | 'ru'
+}
+
 function visitTimeLabel(mode: DispatchPreviewInput['visit_time_mode'], at: string | null, locale: DispatchPreviewInput['locale']) {
   if (mode === 'asap') return locale === 'ru' ? 'Срочно (ASAP)' : 'Шошилинч (ASAP)'
   if (mode === 'scheduled' && at) {
@@ -57,6 +65,69 @@ export async function buildDispatchPreviewText(event: H3Event, input: DispatchPr
     `⏰ ${timeTitle}: ${visitTimeLabel(input.visit_time_mode, input.visit_time_at, input.locale)}`,
     `🔒 ${privacyNote}`
   ].join('\n')
+}
+
+export function buildAdminReviewNotificationText(input: AdminReviewNotificationInput) {
+  const problem = input.problem_summary || (input.locale === 'ru' ? 'Не указано' : 'Кўрсатилмаган')
+  const phone = input.phone_e164 || (input.locale === 'ru' ? 'Не указано' : 'Кўрсатилмаган')
+
+  if (input.locale === 'ru') {
+    return [
+      `🆕 Новая заявка ожидает проверки: ${input.public_code}`,
+      `Клиент: ${input.requester_name}`,
+      `Телефон: ${phone}`,
+      `Проблема: ${problem}`,
+      '',
+      'Откройте админ-панель и подтвердите отправку мастерам.'
+    ].join('\n')
+  }
+
+  return [
+    `🆕 Янги мурожаат текширув кутяпти: ${input.public_code}`,
+    `Мижоз: ${input.requester_name}`,
+    `Телефон: ${phone}`,
+    `Муаммо: ${problem}`,
+    '',
+    'Админ панелга кириб, усталарга юборишни тасдиқланг.'
+  ].join('\n')
+}
+
+export async function sendTelegramUserMessage(
+  botToken: string,
+  telegramUserId: number,
+  text: string
+): Promise<{ messageId: number | null; ok: boolean; error?: string }> {
+  try {
+    const response = await fetch(`https://api.telegram.org/bot${botToken}/sendMessage`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        chat_id: telegramUserId,
+        text
+      })
+    })
+
+    let payload: { ok?: boolean; result?: { message_id?: number }; description?: string } | null = null
+    try {
+      payload = await response.json() as { ok?: boolean; result?: { message_id?: number }; description?: string }
+    }
+    catch {
+      payload = null
+    }
+
+    if (!response.ok || !payload?.ok) {
+      return { ok: false, messageId: null, error: payload?.description || `HTTP ${response.status}` }
+    }
+
+    return { ok: true, messageId: payload.result?.message_id ?? null }
+  }
+  catch (error) {
+    return {
+      ok: false,
+      messageId: null,
+      error: error instanceof Error ? error.message : 'Unknown Telegram send error'
+    }
+  }
 }
 
 export async function sendTelegramDispatchMessage(
