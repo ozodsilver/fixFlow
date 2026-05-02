@@ -17,7 +17,7 @@ export default defineEventHandler(async (event) => {
     .from('admin_dispatch_reviews')
     .select(select)
     .eq('status', 'pending')
-    .order('created_at', { ascending: true })
+    .order('created_at', { ascending: false })
 
   if (pendingError) {
     apiError(500, 'db.failed', 'Failed to load pending dispatch reviews', { reason: pendingError.message })

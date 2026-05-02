@@ -1,7 +1,8 @@
 import { defineEventHandler, getRouterParam, readBody } from 'h3'
 import { apiError, ok } from '~~/server/utils/api'
-import { hashRequestPayload, requireUserContext } from '~~/server/utils/auth'
-import { getSupabaseAdmin } from '~~/server/utils/supabase-admin'
+import { hashRequestPayload } from '~~/server/utils/auth'
+import { requireMasterContext } from '~~/server/utils/master-auth'
+import { buildMasterClaimNotificationText, sendTelegramUserMessage } from '~~/server/utils/telegram-dispatch'
 
 interface ClaimBody {
   idempotency_key?: string
@@ -19,28 +20,7 @@ export default defineEventHandler(async (event) => {
   }
 
   const config = useRuntimeConfig(event)
-  let ctx = await requireUserContext(event)
-  const supabase = getSupabaseAdmin(event)
-  if (!ctx.roles.is_master && config.public.allowDevAuthBypass) {
-    const { error: approveError } = await supabase
-      .from('master_profiles')
-      .upsert(
-        {
-          user_id: ctx.user.id,
-          approval_status: 'approved',
-          is_active: true,
-          approved_by: ctx.user.id,
-          approved_at: new Date().toISOString()
-        },
-        { onConflict: 'user_id' }
-      )
-    if (!approveError) {
-      ctx = await requireUserContext(event)
-    }
-  }
-  if (!ctx.roles.is_master) {
-    apiError(403, 'master.not_approved', 'Master is not approved')
-  }
+  const { ctx, supabase } = await requireMasterContext(event)
 
   const requestHash = hashRequestPayload({ dispatch_id: dispatchId, master_user_id: ctx.user.id })
 
@@ -63,7 +43,44 @@ export default defineEventHandler(async (event) => {
     apiError(409, errCode, errMessage)
   }
 
-  return ok({
-    ...data.data
-  })
+  const { data: order } = await supabase
+    .from('orders')
+    .select(`
+      id,
+      service_requests!orders_request_id_fkey(
+        public_code, problem_summary, phone_e164, address_text, landmark_text, visit_time_mode, visit_time_at, locale,
+        users!service_requests_requester_id_fkey(display_name)
+      )
+    `)
+    .eq('id', data.data.order_id)
+    .maybeSingle()
+
+  const request = Array.isArray(order?.service_requests) ? order?.service_requests[0] : order?.service_requests
+  if (config.telegramBotToken && request) {
+    const miniAppUrl = config.miniAppBaseUrl
+      ? `${String(config.miniAppBaseUrl).replace(/\/+$/, '')}/master/orders/${data.data.order_id}`
+      : ''
+    const requester = Array.isArray(request.users) ? request.users[0] : request.users
+    const sent = await sendTelegramUserMessage(
+      config.telegramBotToken,
+      ctx.user.telegram_user_id,
+      buildMasterClaimNotificationText({
+        public_code: request.public_code,
+        requester_name: requester?.display_name,
+        phone_e164: request.phone_e164,
+        address_text: request.address_text,
+        landmark_text: request.landmark_text,
+        problem_summary: request.problem_summary,
+        visit_time_mode: request.visit_time_mode,
+        visit_time_at: request.visit_time_at,
+        locale: request.locale
+      }),
+      miniAppUrl ? { text: request.locale === 'ru' ? 'Открыть заказ' : 'Буюртмани очиш', url: miniAppUrl } : undefined
+    )
+    if (!sent.ok) {
+      console.warn('telegram.master_claim_notify_failed', sent.error)
+    }
+  }
+
+  return ok({ ...data.data })
 })

@@ -1,7 +1,6 @@
 import { defineEventHandler, getRouterParam } from 'h3'
 import { apiError, ok } from '~~/server/utils/api'
-import { requireUserContext } from '~~/server/utils/auth'
-import { getSupabaseAdmin } from '~~/server/utils/supabase-admin'
+import { requireMasterContext } from '~~/server/utils/master-auth'
 
 export default defineEventHandler(async (event) => {
   const dispatchId = getRouterParam(event, 'dispatchId')
@@ -9,35 +8,13 @@ export default defineEventHandler(async (event) => {
     apiError(422, 'validation.failed', 'dispatchId is required')
   }
 
-  const config = useRuntimeConfig(event)
-  let ctx = await requireUserContext(event)
-  const supabase = getSupabaseAdmin(event)
-  if (!ctx.roles.is_master && config.public.allowDevAuthBypass) {
-    const { error: approveError } = await supabase
-      .from('master_profiles')
-      .upsert(
-        {
-          user_id: ctx.user.id,
-          approval_status: 'approved',
-          is_active: true,
-          approved_by: ctx.user.id,
-          approved_at: new Date().toISOString()
-        },
-        { onConflict: 'user_id' }
-      )
-    if (!approveError) {
-      ctx = await requireUserContext(event)
-    }
-  }
-  if (!ctx.roles.is_master) {
-    apiError(403, 'master.not_approved', 'Master is not approved')
-  }
+  const { ctx, supabase } = await requireMasterContext(event)
 
   const { data: dispatch, error } = await supabase
     .from('dispatch_records')
     .select(`
       id, status, expires_at, claimed_by_master_id, request_id,
-      service_requests(
+      service_requests!dispatch_records_request_id_fkey(
         id, public_code, status, issue_custom, problem_summary, phone_e164, address_text, landmark_text,
         domain_id, urgency, visit_time_mode, visit_time_at, locale
       )

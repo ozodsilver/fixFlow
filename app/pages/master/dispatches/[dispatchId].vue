@@ -33,6 +33,12 @@ const isClaimedByOther = computed(() => isClaimed.value && !isClaimedByMe.value)
 
 const dispatchId = computed(() => String(route.params.dispatchId || ''))
 
+const getErrorMessage = (error: unknown) =>
+  (error as { data?: { error?: { message?: string }, message?: string }, message?: string })?.data?.error?.message
+  || (error as { data?: { message?: string } })?.data?.message
+  || (error as { message?: string })?.message
+  || t('common.unexpectedError')
+
 const extractRawParam = (input: string, key: string): string | null => {
   const normalized = input.startsWith('?') || input.startsWith('#') ? input.slice(1) : input
   if (!normalized) return null
@@ -122,13 +128,13 @@ const loadDispatch = async () => {
         dispatch.value = res.data.dispatch
         return
       }
-      catch {
-        errorMessage.value = 'Session ochilmadi. Mini App ichidan qayta ochib kiring.'
+      catch (retryError: unknown) {
+        errorMessage.value = getErrorMessage(retryError) || 'Session ochilmadi. Mini App ichidan qayta ochib kiring.'
         return
       }
     }
 
-    errorMessage.value = (error as { data?: { error?: { message?: string } } })?.data?.error?.message || t('common.unexpectedError')
+    errorMessage.value = getErrorMessage(error)
   }
   finally {
     loading.value = false
@@ -142,7 +148,7 @@ const claimDispatch = async () => {
   successMessage.value = ''
 
   try {
-    await $fetch(`/api/v1/master/dispatches/${dispatchId.value}/claim`, {
+    const result = await $fetch<{ data: { order_id: string } }>(`/api/v1/master/dispatches/${dispatchId.value}/claim`, {
       method: 'POST',
       body: {
         idempotency_key: crypto.randomUUID()
@@ -150,9 +156,12 @@ const claimDispatch = async () => {
     })
     successMessage.value = 'Buyurtma qabul qilindi.'
     await loadDispatch()
+    if (result.data.order_id) {
+      await navigateTo(`/master/orders/${result.data.order_id}`)
+    }
   }
   catch (error: unknown) {
-    errorMessage.value = (error as { data?: { error?: { message?: string } } })?.data?.error?.message || t('common.unexpectedError')
+    errorMessage.value = getErrorMessage(error)
   }
   finally {
     claiming.value = false

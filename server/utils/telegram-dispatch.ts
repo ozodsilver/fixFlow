@@ -18,6 +18,18 @@ interface AdminReviewNotificationInput {
   locale: 'uz_cyrl' | 'ru'
 }
 
+interface MasterClaimNotificationInput {
+  public_code: string
+  requester_name?: string | null
+  phone_e164?: string | null
+  address_text?: string | null
+  landmark_text?: string | null
+  problem_summary?: string | null
+  visit_time_mode?: 'asap' | 'scheduled' | null
+  visit_time_at?: string | null
+  locale: 'uz_cyrl' | 'ru'
+}
+
 function visitTimeLabel(mode: DispatchPreviewInput['visit_time_mode'], at: string | null, locale: DispatchPreviewInput['locale']) {
   if (mode === 'asap') return locale === 'ru' ? 'Срочно (ASAP)' : 'Шошилинч (ASAP)'
   if (mode === 'scheduled' && at) {
@@ -92,19 +104,60 @@ export function buildAdminReviewNotificationText(input: AdminReviewNotificationI
   ].join('\n')
 }
 
+export function buildMasterClaimNotificationText(input: MasterClaimNotificationInput) {
+  const problem = input.problem_summary || (input.locale === 'ru' ? 'Не указано' : 'Кўрсатилмаган')
+  const phone = input.phone_e164 || (input.locale === 'ru' ? 'Не указано' : 'Кўрсатилмаган')
+  const address = input.address_text || (input.locale === 'ru' ? 'Не указано' : 'Кўрсатилмаган')
+  const requester = input.requester_name || (input.locale === 'ru' ? 'Клиент' : 'Мижоз')
+  const time = visitTimeLabel(input.visit_time_mode || null, input.visit_time_at || null, input.locale)
+  const landmark = input.landmark_text ? `\n${input.locale === 'ru' ? 'Ориентир' : 'Мўлжал'}: ${input.landmark_text}` : ''
+
+  if (input.locale === 'ru') {
+    return [
+      `✅ Заказ принят: ${input.public_code}`,
+      `Клиент: ${requester}`,
+      `Телефон: ${phone}`,
+      `Адрес: ${address}${landmark}`,
+      `Время: ${time}`,
+      `Проблема: ${problem}`,
+      '',
+      'После завершения работы сообщите сумму администратору. Комиссия платформы: 5%.'
+    ].join('\n')
+  }
+
+  return [
+    `✅ Буюртма қабул қилинди: ${input.public_code}`,
+    `Мижоз: ${requester}`,
+    `Телефон: ${phone}`,
+    `Манзил: ${address}${landmark}`,
+    `Вақт: ${time}`,
+    `Муаммо: ${problem}`,
+    '',
+    'Иш тугагач суммани админга билдиринг. Платформа комиссияси: 5%.'
+  ].join('\n')
+}
+
 export async function sendTelegramUserMessage(
   botToken: string,
   telegramUserId: number,
-  text: string
+  text: string,
+  button?: { text: string; url: string }
 ): Promise<{ messageId: number | null; ok: boolean; error?: string }> {
   try {
+    const payloadBody: Record<string, unknown> = {
+      chat_id: telegramUserId,
+      text
+    }
+    if (button?.text && button.url) {
+      payloadBody.reply_markup = {
+        inline_keyboard: [[{ text: button.text, url: button.url }]]
+      }
+    }
+
     const response = await fetch(`https://api.telegram.org/bot${botToken}/sendMessage`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        chat_id: telegramUserId,
-        text
-      })
+      body: JSON.stringify(payloadBody)
     })
 
     let payload: { ok?: boolean; result?: { message_id?: number }; description?: string } | null = null
