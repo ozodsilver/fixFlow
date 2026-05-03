@@ -5,7 +5,10 @@ const api = useRequesterApi()
 
 const loading = ref(true)
 const errorMessage = ref('')
+const successMessage = ref('')
+const savingPrice = ref(false)
 const assignment = ref<any | null>(null)
+const finalPriceInput = ref('')
 
 const orderId = computed(() => String(route.params.orderId || ''))
 
@@ -60,9 +63,11 @@ const tryTelegramAuth = async () => {
 const loadOrder = async () => {
   loading.value = true
   errorMessage.value = ''
+  successMessage.value = ''
   try {
     const res = await $fetch<{ data: { assignment: any } }>(`/api/v1/master/orders/${orderId.value}`)
     assignment.value = res.data.assignment
+    finalPriceInput.value = order.value?.final_price_amount ? String(order.value.final_price_amount) : ''
   }
   catch (error: unknown) {
     const code = (error as { data?: { error?: { code?: string } } })?.data?.error?.code
@@ -72,6 +77,7 @@ const loadOrder = async () => {
         await tryTelegramAuth()
         const res = await $fetch<{ data: { assignment: any } }>(`/api/v1/master/orders/${orderId.value}`)
         assignment.value = res.data.assignment
+        finalPriceInput.value = order.value?.final_price_amount ? String(order.value.final_price_amount) : ''
         return
       }
       catch (retryError: unknown) {
@@ -96,6 +102,69 @@ const request = computed(() => {
   return Array.isArray(value) ? value[0] : value
 })
 
+const finalPriceAmount = computed(() => {
+  const amount = Number(String(finalPriceInput.value || '').trim())
+  return Number.isFinite(amount) && amount > 0 ? Math.floor(amount) : null
+})
+
+const commissionPreview = computed(() => {
+  if (!finalPriceAmount.value) return null
+  return Math.ceil((finalPriceAmount.value * Number(order.value?.commission_percent || 5)) / 100)
+})
+
+const canEditFinalPrice = computed(() =>
+  !!order.value
+  && order.value.status !== 'completed'
+  && order.value.status !== 'canceled_admin'
+  && order.value.commission_status !== 'paid'
+)
+
+const statusLabel = (status: string) => {
+  const map: Record<string, string> = {
+    accepted: 'Қабул қилинган',
+    in_progress: 'Жараёнда',
+    completed: 'Иш якунланган',
+    canceled_admin: 'Бекор қилинган'
+  }
+  return map[status] || status
+}
+
+const commissionStatusLabel = (status: string) => {
+  const map: Record<string, string> = {
+    not_set: 'Сумма киритилмаган',
+    unpaid: 'Админга тўлов кутилаяпти',
+    paid: 'Админ қабул қилди',
+    waived: 'Комиссия кечирилган'
+  }
+  return map[status] || status
+}
+
+const submitFinalPrice = async () => {
+  if (!finalPriceAmount.value) {
+    errorMessage.value = 'Иш суммасини киритинг.'
+    return
+  }
+
+  savingPrice.value = true
+  errorMessage.value = ''
+  successMessage.value = ''
+  try {
+    await $fetch(`/api/v1/master/orders/${orderId.value}/price`, {
+      method: 'POST',
+      body: { final_price_amount: finalPriceAmount.value }
+    })
+    successMessage.value = 'Сумма сақланди. 5% админ улуши автоматик ҳисобланди.'
+    await loadOrder()
+    successMessage.value = 'Сумма сақланди. 5% админ улуши автоматик ҳисобланди.'
+  }
+  catch (error: unknown) {
+    errorMessage.value = getErrorMessage(error)
+  }
+  finally {
+    savingPrice.value = false
+  }
+}
+
 onMounted(loadOrder)
 </script>
 
@@ -111,7 +180,7 @@ onMounted(loadOrder)
         <section class="ff-panel rounded-3xl p-4 space-y-2">
           <div class="flex items-start justify-between gap-3">
             <p class="text-sm font-bold">{{ request.public_code }}</p>
-            <span class="rounded-full bg-[#eee9ff] px-2 py-1 text-xs font-semibold text-[#5c4bd6]">{{ order.status }}</span>
+            <span class="rounded-full bg-[#eee9ff] px-2 py-1 text-xs font-semibold text-[#5c4bd6]">{{ statusLabel(order.status) }}</span>
           </div>
           <p class="text-sm text-slate-700">{{ request.problem_summary || '-' }}</p>
         </section>
@@ -126,10 +195,37 @@ onMounted(loadOrder)
 
         <section class="ff-panel rounded-3xl p-4 space-y-2">
           <p class="text-xs font-bold uppercase tracking-wide text-violet-700">Комиссия</p>
-          <p class="text-sm text-slate-700">Фоиз: {{ order.commission_percent }}%</p>
-          <p class="text-sm text-slate-700">Иш суммаси: {{ order.final_price_amount ? `${order.final_price_amount} сўм` : 'админ киритади' }}</p>
-          <p class="text-sm text-slate-700">Админ улуши: {{ order.commission_amount ? `${order.commission_amount} сўм` : '-' }}</p>
-          <p class="text-sm text-slate-700">Ҳолат: {{ order.commission_status }}</p>
+          <UFormField label="Бажарилган иш суммаси">
+            <UInput
+              v-model="finalPriceInput"
+              type="number"
+              min="1"
+              inputmode="numeric"
+              placeholder="Масалан: 200000"
+              class="w-full"
+              :disabled="!canEditFinalPrice"
+            />
+          </UFormField>
+          <div class="rounded-2xl bg-slate-50 p-3 text-sm text-slate-700">
+            <p>Фоиз: {{ order.commission_percent }}%</p>
+            <p>Админ улуши: <span class="font-bold">{{ commissionPreview ? `${commissionPreview} сўм` : order.commission_amount ? `${order.commission_amount} сўм` : '-' }}</span></p>
+            <p>Ҳолат: <span class="font-bold">{{ commissionStatusLabel(order.commission_status) }}</span></p>
+            <p v-if="order.completed_at" class="text-emerald-700">Иш якунланган: {{ new Date(order.completed_at).toLocaleString() }}</p>
+          </div>
+          <p v-if="successMessage" class="text-sm font-semibold text-emerald-700">{{ successMessage }}</p>
+          <UButton
+            v-if="canEditFinalPrice"
+            color="primary"
+            class="w-full justify-center font-semibold"
+            :loading="savingPrice"
+            :disabled="!finalPriceAmount"
+            @click="submitFinalPrice"
+          >
+            Суммани сақлаш
+          </UButton>
+          <p v-else class="text-xs text-slate-500">
+            Админ қабул қилганидан кейин сумма ўзгартирилмайди.
+          </p>
         </section>
       </template>
     </main>

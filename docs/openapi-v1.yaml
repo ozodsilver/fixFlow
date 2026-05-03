@@ -570,6 +570,40 @@ paths:
             application/json:
               schema: { $ref: '#/components/schemas/ErrorResponse' }
 
+  /api/v1/master/orders/{orderId}/price:
+    post:
+      tags: [master]
+      summary: Submit final work amount and calculate admin commission
+      x-error-codes: [auth.session_expired, master.not_approved, validation.failed, request.not_found, order.closed, order.commission_paid]
+      parameters:
+        - in: path
+          name: orderId
+          required: true
+          schema: { type: string, format: uuid }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [final_price_amount]
+              properties:
+                final_price_amount:
+                  type: integer
+                  minimum: 1
+      responses:
+        '200': { description: Final amount saved, commission calculated }
+        '403':
+          description: Forbidden
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+        '409':
+          description: Closed order or already accepted commission
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+
   /api/v1/master/orders/{orderId}/status:
     post:
       tags: [master]

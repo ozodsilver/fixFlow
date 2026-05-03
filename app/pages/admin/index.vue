@@ -1,12 +1,62 @@
 <script setup lang="ts">
+const api = useRequesterApi()
+const { locale } = useAppI18n()
+
 const loggedIn = ref(false)
 const loading = ref(true)
 const actionLoadingId = ref<string | null>(null)
 const errorMessage = ref('')
 const activeSection = ref<'dispatch' | 'orders' | 'masters' | 'cancel'>('dispatch')
+const telegramAdminLoading = ref(false)
+const telegramLoginAttempted = ref(false)
 
 const login = ref('')
 const password = ref('')
+
+const extractRawParam = (input: string, key: string): string | null => {
+  const normalized = input.startsWith('?') || input.startsWith('#') ? input.slice(1) : input
+  if (!normalized) return null
+
+  for (const part of normalized.split('&')) {
+    if (!part.startsWith(`${key}=`)) continue
+    const raw = part.slice(key.length + 1)
+    if (!raw) return null
+    try {
+      return decodeURIComponent(raw)
+    }
+    catch {
+      return raw
+    }
+  }
+  return null
+}
+
+const getTelegramInitData = () => {
+  if (!process.client) return null
+  const webApp = (window as Window & { Telegram?: { WebApp?: { initData?: string } } }).Telegram?.WebApp
+  const fromSdk = webApp?.initData?.trim()
+  if (fromSdk) return fromSdk
+
+  const fromQuery = extractRawParam(window.location.search, 'tgWebAppData')
+  if (fromQuery?.trim()) return fromQuery
+
+  const fromHash = extractRawParam(window.location.hash, 'tgWebAppData')
+  if (fromHash?.trim()) return fromHash
+
+  const cached = sessionStorage.getItem('ff_tg_init_data')
+  if (cached?.trim()) return cached
+
+  return null
+}
+
+const waitForTelegramInitData = async () => {
+  for (let i = 0; i < 20; i += 1) {
+    const value = getTelegramInitData()
+    if (value) return value
+    await new Promise(resolve => setTimeout(resolve, 120))
+  }
+  return null
+}
 
 type CancelItem = {
   id: string
@@ -181,12 +231,44 @@ const masterStatusOf = (item: MasterItem) => masterProfileOf(item)?.approval_sta
 const pendingMastersCount = computed(() =>
   masterItems.value.filter(item => masterStatusOf(item) === 'pending' || masterStatusOf(item) === 'not_master').length
 )
+const orderDraftAmountText = (item: AdminOrderItem) => {
+  const raw = orderDrafts.value[item.id]?.final_price_amount
+  if (raw === null || raw === undefined) return ''
+  return String(raw).trim()
+}
+const orderDraftOf = (item: AdminOrderItem) => {
+  if (!orderDrafts.value[item.id]) {
+    orderDrafts.value[item.id] = {
+      final_price_amount: item.final_price_amount ? String(item.final_price_amount) : '',
+      admin_note: item.admin_note || ''
+    }
+  }
+  return orderDrafts.value[item.id] as { final_price_amount: string; admin_note: string }
+}
+const setOrderDraftField = (item: AdminOrderItem, field: 'final_price_amount' | 'admin_note', value: string | number | null | undefined) => {
+  const draft = orderDraftOf(item)
+  draft[field] = String(value || '')
+}
+const orderDraftFinalPrice = (item: AdminOrderItem) => orderDraftOf(item).final_price_amount
+const orderDraftAdminNote = (item: AdminOrderItem) => orderDraftOf(item).admin_note
+const draftFinalPriceOf = (item: AdminOrderItem) => {
+  const raw = orderDraftAmountText(item)
+  if (!raw) return item.final_price_amount || null
+  const amount = Number(raw)
+  return Number.isFinite(amount) && amount >= 0 ? Math.floor(amount) : null
+}
+const commissionPreviewOf = (item: AdminOrderItem) => {
+  const amount = draftFinalPriceOf(item)
+  if (amount === null) return item.commission_amount || null
+  return Math.ceil((amount * Number(item.commission_percent || 5)) / 100)
+}
 
 const updateOrder = async (item: AdminOrderItem, extra: Record<string, unknown> = {}) => {
   actionLoadingId.value = item.id
   errorMessage.value = ''
   const draft = orderDrafts.value[item.id] || { final_price_amount: '', admin_note: '' }
-  const amount = draft.final_price_amount.trim() ? Number(draft.final_price_amount) : null
+  const amountText = draft.final_price_amount === null || draft.final_price_amount === undefined ? '' : String(draft.final_price_amount).trim()
+  const amount = amountText ? Number(amountText) : null
 
   try {
     await $fetch(`/api/v1/admin/orders/${item.id}/update`, {
@@ -240,6 +322,40 @@ const submitLogin = async () => {
   }
 }
 
+const submitTelegramAdminLogin = async (silent = false) => {
+  if (telegramAdminLoading.value) return false
+  telegramAdminLoading.value = true
+  if (!silent) errorMessage.value = ''
+
+  try {
+    const initData = await waitForTelegramInitData()
+    if (!initData) {
+      if (!silent) errorMessage.value = 'Telegram Mini App маълумоти топилмади.'
+      return false
+    }
+
+    sessionStorage.setItem('ff_tg_init_data', initData)
+    await api.initAuth({
+      init_data: initData,
+      locale: locale.value
+    })
+    await $fetch('/api/v1/admin/auth/telegram', { method: 'POST' })
+    loggedIn.value = true
+    await loadItems()
+    return true
+  }
+  catch (error: unknown) {
+    if (!silent) {
+      errorMessage.value =
+        (error as { data?: { error?: { message?: string } } })?.data?.error?.message || 'Telegram admin login failed'
+    }
+    return false
+  }
+  finally {
+    telegramAdminLoading.value = false
+  }
+}
+
 const reviewDispatch = async (id: string, action: 'approve' | 'reject') => {
   actionLoadingId.value = id
   errorMessage.value = ''
@@ -283,8 +399,14 @@ const logout = async () => {
 
 onMounted(async () => {
   await checkSession()
-  if (loggedIn.value) await loadItems()
-  else loading.value = false
+  if (loggedIn.value) {
+    await loadItems()
+    return
+  }
+
+  telegramLoginAttempted.value = true
+  const telegramLoggedIn = await submitTelegramAdminLogin(true)
+  if (!telegramLoggedIn) loading.value = false
 })
 </script>
 
@@ -300,7 +422,21 @@ onMounted(async () => {
         <UFormField label="Password" required>
           <UInput v-model="password" type="password" placeholder="••••••••" class="w-full" />
         </UFormField>
-        <UButton color="primary" class="font-semibold" @click="submitLogin">Kirish</UButton>
+        <div class="flex flex-wrap gap-2">
+          <UButton color="primary" class="font-semibold" @click="submitLogin">Kirish</UButton>
+          <UButton
+            color="neutral"
+            variant="soft"
+            class="font-semibold"
+            :loading="telegramAdminLoading"
+            @click="submitTelegramAdminLogin(false)"
+          >
+            Telegram орқали кириш
+          </UButton>
+        </div>
+        <p v-if="telegramLoginAttempted" class="text-xs text-slate-500">
+          Mini App ичида очилса, admin Telegram аккаунт автоматик текширилади.
+        </p>
       </section>
 
       <template v-else>
@@ -415,27 +551,32 @@ onMounted(async () => {
             </div>
 
             <div class="grid grid-cols-1 gap-2 sm:grid-cols-2">
-              <UFormField label="Ish summasi">
+              <UFormField label="Ish summasi (master kiritgan)">
                 <UInput
-                  v-model="orderDrafts[item.id].final_price_amount"
+                  :model-value="orderDraftFinalPrice(item)"
                   type="number"
                   min="0"
                   placeholder="Masalan: 200000"
                   class="w-full"
+                  @update:model-value="setOrderDraftField(item, 'final_price_amount', $event)"
                 />
               </UFormField>
               <UFormField label="Admin izohi">
                 <UInput
-                  v-model="orderDrafts[item.id].admin_note"
+                  :model-value="orderDraftAdminNote(item)"
                   placeholder="Ixtiyoriy"
                   class="w-full"
+                  @update:model-value="setOrderDraftField(item, 'admin_note', $event)"
                 />
               </UFormField>
             </div>
 
             <div class="rounded-2xl bg-slate-50 p-3 text-xs text-slate-700">
               <p>Комиссия: {{ item.commission_percent }}%</p>
-              <p>Админ улуши: <span class="font-bold">{{ item.commission_amount ? `${item.commission_amount} сўм` : '-' }}</span></p>
+              <p>Админ улуши: <span class="font-bold">{{ commissionPreviewOf(item) ? `${commissionPreviewOf(item)} сўм` : '-' }}</span></p>
+              <p v-if="commissionPreviewOf(item) && commissionPreviewOf(item) !== item.commission_amount" class="mt-1 text-[11px] text-amber-700">
+                Бу ҳали preview. DBга ёзиш учун “Сақлаш”ни босинг.
+              </p>
               <p v-if="item.commission_paid_at">Тўланган вақт: {{ new Date(item.commission_paid_at).toLocaleString() }}</p>
             </div>
 
@@ -452,18 +593,10 @@ onMounted(async () => {
                 color="success"
                 variant="soft"
                 :loading="actionLoadingId === item.id"
-                @click="updateOrder(item, { commission_status: 'paid' })"
+                :disabled="!draftFinalPriceOf(item) || item.status === 'completed'"
+                @click="updateOrder(item, { commission_status: 'paid', status: 'completed' })"
               >
-                Комиссия тўланди
-              </UButton>
-              <UButton
-                color="neutral"
-                variant="soft"
-                :loading="actionLoadingId === item.id"
-                :disabled="item.status === 'completed'"
-                @click="updateOrder(item, { status: 'completed' })"
-              >
-                Иш якунланди
+                Қабул қилинди
               </UButton>
             </div>
           </section>

@@ -93,8 +93,18 @@ const statusLabel = (status: string) => {
   const map: Record<string, string> = {
     accepted: 'Қабул қилинган',
     in_progress: 'Жараёнда',
-    completed: 'Якунланган',
+    completed: 'Иш якунланган',
     canceled_admin: 'Бекор қилинган'
+  }
+  return map[status] || status
+}
+
+const commissionStatusLabel = (status: string) => {
+  const map: Record<string, string> = {
+    not_set: 'сумма киритилмаган',
+    unpaid: 'админга тўлов кутилаяпти',
+    paid: 'админ қабул қилди',
+    waived: 'комиссия кечирилган'
   }
   return map[status] || status
 }
@@ -128,8 +138,13 @@ onMounted(loadOrders)
           </span>
         </div>
         <p class="text-sm text-slate-700">{{ requestOf(assignment)?.problem_summary || '-' }}</p>
-        <p class="text-xs text-slate-500">Вақт: {{ requestOf(assignment)?.visit_time_at ? new Date(requestOf(assignment)?.visit_time_at).toLocaleString() : requestOf(assignment)?.visit_time_mode || '-' }}</p>
-        <p class="text-xs text-slate-500">Комиссия: {{ orderOf(assignment)?.commission_amount ? `${orderOf(assignment)?.commission_amount} сўм` : 'сумма киритилмаган' }}</p>
+        <p class="text-xs text-slate-500">Олинган вақт: {{ assignment.assigned_at ? new Date(assignment.assigned_at).toLocaleString() : '-' }}</p>
+        <p class="text-xs text-slate-500">Визит вақти: {{ requestOf(assignment)?.visit_time_at ? new Date(requestOf(assignment)?.visit_time_at).toLocaleString() : requestOf(assignment)?.visit_time_mode || '-' }}</p>
+        <p class="text-xs text-slate-500">
+          Комиссия:
+          {{ orderOf(assignment)?.commission_amount ? `${orderOf(assignment)?.commission_amount} сўм` : '-' }}
+          · {{ commissionStatusLabel(orderOf(assignment)?.commission_status) }}
+        </p>
       </section>
     </main>
   </div>

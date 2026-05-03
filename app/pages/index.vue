@@ -1,5 +1,7 @@
 <script setup lang="ts">
 const route = useRoute()
+const api = useRequesterApi()
+const { locale } = useAppI18n()
 const debugEnabled = computed(() => String(route.query.ffdebug || '') === '1')
 const debugLines = ref<string[]>([])
 const debugFinal = ref('')
@@ -81,6 +83,83 @@ const pickDispatchIdFromTelegram = () => {
   return dispatchFromInitData
 }
 
+const getTelegramInitData = () => {
+  if (!process.client) return ''
+  const webApp = (window as Window & { Telegram?: { WebApp?: { initData?: string; ready?: () => void } } }).Telegram?.WebApp
+  return webApp?.initData?.trim()
+    || extractRawParam(window.location.search, 'tgWebAppData')?.trim()
+    || extractRawParam(window.location.hash, 'tgWebAppData')?.trim()
+    || sessionStorage.getItem('ff_tg_init_data')
+    || ''
+}
+
+const waitForTelegramInitData = async () => {
+  for (let i = 0; i < 20; i += 1) {
+    const value = getTelegramInitData()
+    if (value) return value
+    await new Promise(resolve => setTimeout(resolve, 120))
+  }
+  return ''
+}
+
+const tryTelegramAuth = async () => {
+  const runtimeConfig = useRuntimeConfig()
+  const initData = await waitForTelegramInitData()
+  if (initData) {
+    sessionStorage.setItem('ff_tg_init_data', initData)
+    await api.initAuth({ init_data: initData, locale: locale.value })
+    return
+  }
+
+  if (runtimeConfig.public.allowDevAuthBypass) {
+    const devTelegramUserId = Number(sessionStorage.getItem('ff_dev_tg_uid') || '900001')
+    sessionStorage.setItem('ff_dev_tg_uid', String(devTelegramUserId))
+    await api.initAuth({ telegram_user_id: devTelegramUserId, display_name: 'Dev Local User', locale: locale.value })
+  }
+}
+
+const navigateByRole = async () => {
+  try {
+    let bootstrap = await api.bootstrap()
+    if (bootstrap.data.roles.is_master) {
+      debugFinal.value = '/master/orders'
+      if (!debugEnabled.value) await navigateTo('/master/orders', { replace: true })
+      return
+    }
+    if (bootstrap.data.roles.is_admin) {
+      debugFinal.value = '/admin'
+      if (!debugEnabled.value) await navigateTo('/admin', { replace: true })
+      return
+    }
+  }
+  catch (error: unknown) {
+    const code = (error as { data?: { error?: { code?: string } } })?.data?.error?.code
+    const statusCode = (error as { statusCode?: number })?.statusCode
+    if (code === 'auth.session_expired' || statusCode === 401) {
+      try {
+        await tryTelegramAuth()
+        const bootstrap = await api.bootstrap()
+        if (bootstrap.data.roles.is_master) {
+          debugFinal.value = '/master/orders'
+          if (!debugEnabled.value) await navigateTo('/master/orders', { replace: true })
+          return
+        }
+        if (bootstrap.data.roles.is_admin) {
+          debugFinal.value = '/admin'
+          if (!debugEnabled.value) await navigateTo('/admin', { replace: true })
+          return
+        }
+      }
+      catch {
+        debugLines.value.push('role bootstrap failed; opening requester')
+      }
+    }
+  }
+
+  debugFinal.value = '/requester'
+  if (!debugEnabled.value) await navigateTo('/requester', { replace: true })
+}
+
 const resolveAndNavigate = async () => {
   debugLines.value = []
   let dispatchId = pickDispatchIdFromQuery()
@@ -117,9 +196,8 @@ const resolveAndNavigate = async () => {
     await navigateTo(`/master/dispatches/${dispatchId}`, { replace: true })
     return
   }
-  debugFinal.value = '/requester'
   if (debugEnabled.value || hasDispatchHintInUrl) return
-  await navigateTo('/requester', { replace: true })
+  await navigateByRole()
 }
 
 onMounted(resolveAndNavigate)

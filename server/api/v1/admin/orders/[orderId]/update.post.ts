@@ -15,6 +15,7 @@ const allowedStatuses = new Set(['accepted', 'in_progress', 'completed', 'cancel
 
 export default defineEventHandler(async (event) => {
   const admin = requireAdminSession(event)
+  const adminSession = admin as NonNullable<typeof admin>
   const orderId = getRouterParam(event, 'orderId')
   if (!orderId) apiError(422, 'validation.failed', 'orderId is required')
 
@@ -22,10 +23,11 @@ export default defineEventHandler(async (event) => {
   const patch: Record<string, unknown> = {}
 
   if ('final_price_amount' in body) {
-    if (body.final_price_amount !== null && (!Number.isInteger(body.final_price_amount) || body.final_price_amount < 0)) {
+    const finalPriceAmount = body.final_price_amount
+    if (finalPriceAmount !== null && finalPriceAmount !== undefined && (!Number.isInteger(finalPriceAmount) || finalPriceAmount < 0)) {
       apiError(422, 'validation.failed', 'final_price_amount must be a positive integer')
     }
-    patch.final_price_amount = body.final_price_amount
+    patch.final_price_amount = finalPriceAmount ?? null
   }
 
   if ('commission_status' in body) {
@@ -60,12 +62,20 @@ export default defineEventHandler(async (event) => {
   const supabase = getSupabaseAdmin(event)
   const { data: current, error: lookupError } = await supabase
     .from('orders')
-    .select('id, request_id, status')
+    .select('id, request_id, status, final_price_amount')
     .eq('id', orderId)
     .single()
 
   if (lookupError || !current) {
     apiError(404, 'request.not_found', 'Order not found')
+  }
+  const currentOrder = current as NonNullable<typeof current>
+
+  const finalPriceForCompletion = 'final_price_amount' in patch
+    ? patch.final_price_amount
+    : currentOrder.final_price_amount
+  if ((body.status === 'completed' || body.commission_status === 'paid') && !finalPriceForCompletion) {
+    apiError(422, 'validation.failed', 'final_price_amount is required before accepting commission')
   }
 
   const { data: order, error: updateError } = await supabase
@@ -84,7 +94,7 @@ export default defineEventHandler(async (event) => {
       supabase
         .from('service_requests')
         .update({ status: 'closed_completed' })
-        .eq('id', current.request_id),
+        .eq('id', currentOrder.request_id),
       supabase
         .from('order_assignments')
         .update({
@@ -98,10 +108,10 @@ export default defineEventHandler(async (event) => {
       supabase.from('status_history').insert({
         entity_type: 'order',
         entity_id: orderId,
-        from_status: current.status,
+        from_status: currentOrder.status,
         to_status: 'completed',
         actor_role: 'admin',
-        reason: `completed_by_${admin.login}`
+        reason: `completed_by_${adminSession.login}`
       })
     ])
   }
@@ -111,7 +121,7 @@ export default defineEventHandler(async (event) => {
       supabase
         .from('service_requests')
         .update({ status: 'closed_canceled_admin' })
-        .eq('id', current.request_id),
+        .eq('id', currentOrder.request_id),
       supabase
         .from('order_assignments')
         .update({
@@ -125,10 +135,10 @@ export default defineEventHandler(async (event) => {
       supabase.from('status_history').insert({
         entity_type: 'order',
         entity_id: orderId,
-        from_status: current.status,
+        from_status: currentOrder.status,
         to_status: 'canceled_admin',
         actor_role: 'admin',
-        reason: `canceled_by_${admin.login}`
+        reason: `canceled_by_${adminSession.login}`
       })
     ])
   }
