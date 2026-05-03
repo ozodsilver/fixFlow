@@ -3,7 +3,7 @@ const loggedIn = ref(false)
 const loading = ref(true)
 const actionLoadingId = ref<string | null>(null)
 const errorMessage = ref('')
-const activeSection = ref<'dispatch' | 'orders' | 'cancel'>('dispatch')
+const activeSection = ref<'dispatch' | 'orders' | 'masters' | 'cancel'>('dispatch')
 
 const login = ref('')
 const password = ref('')
@@ -81,15 +81,42 @@ type AdminOrderItem = {
   }>
 }
 
+type MasterItem = {
+  id: string
+  telegram_user_id: number
+  display_name: string
+  username?: string | null
+  phone_e164?: string | null
+  locale: string
+  is_blocked: boolean
+  last_seen_at?: string | null
+  created_at: string
+  master_profiles?: {
+    approval_status: 'pending' | 'approved' | 'revoked'
+    is_active: boolean
+    approved_at?: string | null
+    revoked_at?: string | null
+    created_at: string
+    updated_at: string
+  } | null
+}
+
 const pendingDispatchItems = ref<DispatchReviewItem[]>([])
 const dispatchHistoryItems = ref<DispatchReviewItem[]>([])
 const pendingItems = ref<CancelItem[]>([])
 const historyItems = ref<CancelItem[]>([])
 const orderItems = ref<AdminOrderItem[]>([])
 const orderDrafts = ref<Record<string, { final_price_amount: string; admin_note: string }>>({})
+const masterItems = ref<MasterItem[]>([])
 
 const activeSubtitle = computed(() =>
-  activeSection.value === 'dispatch' ? 'Актив' : activeSection.value === 'orders' ? 'Буюртмалар' : 'Бекор қилинган'
+  activeSection.value === 'dispatch'
+    ? 'Актив'
+    : activeSection.value === 'orders'
+      ? 'Буюртмалар'
+      : activeSection.value === 'masters'
+        ? 'Усталар'
+        : 'Бекор қилинган'
 )
 
 const unpaidCommissionTotal = computed(() =>
@@ -112,16 +139,18 @@ const loadItems = async () => {
   loading.value = true
   errorMessage.value = ''
   try {
-    const [dispatchRes, cancelRes, ordersRes] = await Promise.all([
+    const [dispatchRes, cancelRes, ordersRes, mastersRes] = await Promise.all([
       $fetch<{ data: { pending: DispatchReviewItem[]; history: DispatchReviewItem[] } }>('/api/v1/admin/dispatch-reviews'),
       $fetch<{ data: { pending: CancelItem[]; history: CancelItem[] } }>('/api/v1/admin/cancel-requests'),
-      $fetch<{ data: { items: AdminOrderItem[] } }>('/api/v1/admin/orders')
+      $fetch<{ data: { items: AdminOrderItem[] } }>('/api/v1/admin/orders'),
+      $fetch<{ data: { items: MasterItem[] } }>('/api/v1/admin/masters')
     ])
     pendingDispatchItems.value = dispatchRes.data.pending || []
     dispatchHistoryItems.value = dispatchRes.data.history || []
     pendingItems.value = cancelRes.data.pending || []
     historyItems.value = cancelRes.data.history || []
     orderItems.value = ordersRes.data.items || []
+    masterItems.value = mastersRes.data.items || []
     orderDrafts.value = Object.fromEntries(orderItems.value.map((item) => [
       item.id,
       {
@@ -147,6 +176,11 @@ const normalizeRelated = <T>(value: T | T[] | null | undefined): T | null =>
 const requestOfOrder = (item: AdminOrderItem) => normalizeRelated(item.service_requests)
 const requesterOfOrder = (item: AdminOrderItem) => normalizeRelated(requestOfOrder(item)?.users)
 const masterOfOrder = (item: AdminOrderItem) => normalizeRelated(currentAssignment(item)?.users)
+const masterProfileOf = (item: MasterItem) => normalizeRelated(item.master_profiles)
+const masterStatusOf = (item: MasterItem) => masterProfileOf(item)?.approval_status || 'not_master'
+const pendingMastersCount = computed(() =>
+  masterItems.value.filter(item => masterStatusOf(item) === 'pending' || masterStatusOf(item) === 'not_master').length
+)
 
 const updateOrder = async (item: AdminOrderItem, extra: Record<string, unknown> = {}) => {
   actionLoadingId.value = item.id
@@ -167,6 +201,24 @@ const updateOrder = async (item: AdminOrderItem, extra: Record<string, unknown> 
   }
   catch (error: unknown) {
     errorMessage.value = (error as { data?: { error?: { message?: string } } })?.data?.error?.message || 'Order update failed'
+  }
+  finally {
+    actionLoadingId.value = null
+  }
+}
+
+const updateMasterStatus = async (item: MasterItem, status: 'pending' | 'approved' | 'revoked') => {
+  actionLoadingId.value = item.id
+  errorMessage.value = ''
+  try {
+    await $fetch(`/api/v1/admin/masters/${item.id}/status`, {
+      method: 'POST',
+      body: { status }
+    })
+    await loadItems()
+  }
+  catch (error: unknown) {
+    errorMessage.value = (error as { data?: { error?: { message?: string } } })?.data?.error?.message || 'Master update failed'
   }
   finally {
     actionLoadingId.value = null
@@ -254,7 +306,15 @@ onMounted(async () => {
       <template v-else>
         <div class="flex items-center justify-between">
           <h2 class="ff-section-title">
-            {{ activeSection === 'dispatch' ? 'Усталарга юбориш кутилаётган мурожаатлар' : activeSection === 'orders' ? 'Буюртмалар ва комиссия' : 'Бекор қилиш кутилаётган сўровлар' }}
+            {{
+              activeSection === 'dispatch'
+                ? 'Усталарга юбориш кутилаётган мурожаатлар'
+                : activeSection === 'orders'
+                  ? 'Буюртмалар ва комиссия'
+                  : activeSection === 'masters'
+                    ? 'Усталарни тасдиқлаш'
+                    : 'Бекор қилиш кутилаётган сўровлар'
+            }}
           </h2>
           <UButton color="neutral" variant="soft" @click="logout">Chiqish</UButton>
         </div>
@@ -409,6 +469,71 @@ onMounted(async () => {
           </section>
         </template>
 
+        <template v-else-if="activeSection === 'masters'">
+          <section class="ff-panel rounded-3xl p-4">
+            <p class="text-xs font-bold uppercase tracking-wide text-violet-700">Master ruxsatlari</p>
+            <p class="mt-1 text-sm text-slate-700">
+              Янги ёки pending усталар: <span class="font-bold">{{ pendingMastersCount }}</span>
+            </p>
+          </section>
+
+          <section v-if="!loading && masterItems.length === 0" class="ff-panel rounded-3xl p-4">
+            <p class="text-sm text-slate-600">Ҳозирча Telegram орқали кирган userлар йўқ.</p>
+          </section>
+
+          <section v-for="item in masterItems" :key="`master-${item.id}`" class="ff-panel rounded-3xl p-4 space-y-3">
+            <div class="flex items-start justify-between gap-3">
+              <div class="min-w-0">
+                <p class="truncate text-sm font-bold">{{ item.display_name }}</p>
+                <p class="text-xs text-slate-500">@{{ item.username || '-' }} · TG {{ item.telegram_user_id }}</p>
+              </div>
+              <span
+                class="shrink-0 rounded-full px-2 py-1 text-xs font-semibold"
+                :class="masterStatusOf(item) === 'approved' ? 'bg-emerald-100 text-emerald-700' : masterStatusOf(item) === 'revoked' ? 'bg-rose-100 text-rose-700' : 'bg-amber-100 text-amber-700'"
+              >
+                {{ masterStatusOf(item) }}
+              </span>
+            </div>
+
+            <div class="space-y-1 text-xs text-slate-600">
+              <p>Telefon: {{ item.phone_e164 || '-' }}</p>
+              <p>Oxirgi kirgan: {{ item.last_seen_at ? new Date(item.last_seen_at).toLocaleString() : '-' }}</p>
+              <p v-if="masterProfileOf(item)?.approved_at">Tasdiqlangan: {{ new Date(masterProfileOf(item)?.approved_at || '').toLocaleString() }}</p>
+              <p v-if="masterProfileOf(item)?.revoked_at">Bekor qilingan: {{ new Date(masterProfileOf(item)?.revoked_at || '').toLocaleString() }}</p>
+            </div>
+
+            <div class="flex flex-wrap gap-2">
+              <UButton
+                color="success"
+                variant="soft"
+                :loading="actionLoadingId === item.id"
+                :disabled="masterStatusOf(item) === 'approved'"
+                @click="updateMasterStatus(item, 'approved')"
+              >
+                Approved
+              </UButton>
+              <UButton
+                color="neutral"
+                variant="soft"
+                :loading="actionLoadingId === item.id"
+                :disabled="masterStatusOf(item) === 'pending'"
+                @click="updateMasterStatus(item, 'pending')"
+              >
+                Pending
+              </UButton>
+              <UButton
+                color="error"
+                variant="soft"
+                :loading="actionLoadingId === item.id"
+                :disabled="masterStatusOf(item) === 'revoked'"
+                @click="updateMasterStatus(item, 'revoked')"
+              >
+                Revoked
+              </UButton>
+            </div>
+          </section>
+        </template>
+
         <template v-else>
           <section v-if="!loading && pendingItems.length === 0" class="ff-panel rounded-3xl p-4">
             <p class="text-sm text-slate-600">Бекор қилиш кутилаётган сўровлар ҳозирча йўқ.</p>
@@ -478,10 +603,10 @@ onMounted(async () => {
     </main>
 
     <footer v-if="loggedIn" class="fixed inset-x-0 bottom-0 z-20 border-t border-white/70 bg-[#eef6f2]/95 px-4 py-3 shadow-[0_-10px_30px_rgba(28,75,61,0.12)] backdrop-blur">
-      <div class="mx-auto grid max-w-md grid-cols-3 gap-2">
+      <div class="mx-auto grid max-w-md grid-cols-4 gap-2">
         <button
           type="button"
-          class="flex min-h-14 items-center justify-center gap-2 rounded-2xl px-3 text-sm font-bold transition"
+          class="flex min-h-14 items-center justify-center gap-1.5 rounded-2xl px-2 text-sm font-bold transition"
           :class="activeSection === 'dispatch' ? 'bg-[#7358e8] text-white shadow-[0_8px_20px_rgba(115,88,232,0.28)]' : 'bg-white/80 text-[#4f665d]'"
           @click="activeSection = 'dispatch'"
         >
@@ -505,7 +630,19 @@ onMounted(async () => {
         </button>
         <button
           type="button"
-          class="flex min-h-14 items-center justify-center gap-2 rounded-2xl px-2 text-sm font-bold transition"
+          class="flex min-h-14 items-center justify-center gap-1.5 rounded-2xl px-2 text-sm font-bold transition"
+          :class="activeSection === 'masters' ? 'bg-[#7358e8] text-white shadow-[0_8px_20px_rgba(115,88,232,0.28)]' : 'bg-white/80 text-[#4f665d]'"
+          @click="activeSection = 'masters'"
+        >
+          <UIcon name="i-lucide-user-check" class="size-4" />
+          <span>Уста</span>
+          <span class="rounded-full px-2 py-0.5 text-xs" :class="activeSection === 'masters' ? 'bg-white/20' : 'bg-[#e5eee9]'">
+            {{ pendingMastersCount }}
+          </span>
+        </button>
+        <button
+          type="button"
+          class="flex min-h-14 items-center justify-center gap-1.5 rounded-2xl px-2 text-sm font-bold transition"
           :class="activeSection === 'cancel' ? 'bg-[#7358e8] text-white shadow-[0_8px_20px_rgba(115,88,232,0.28)]' : 'bg-white/80 text-[#4f665d]'"
           @click="activeSection = 'cancel'"
         >
