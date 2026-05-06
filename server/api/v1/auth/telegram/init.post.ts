@@ -3,6 +3,7 @@ import { apiError, ok } from '~~/server/utils/api'
 import { getSupabaseAdmin } from '~~/server/utils/supabase-admin'
 import { setSessionCookie } from '~~/server/utils/session'
 import { verifyTelegramInitData } from '~~/server/utils/auth'
+import { isTelegramChatMember } from '~~/server/utils/telegram-dispatch'
 
 interface InitBody {
   init_data?: string
@@ -67,8 +68,9 @@ export default defineEventHandler(async (event) => {
     apiError(500, 'db.failed', 'Failed to create or update user', { reason: upsertError?.message })
   }
 
-  // Dev-only convenience: in non-production (allowDevAuthBypass=true), auto-mark this user as approved master.
-  if (config.public.allowDevAuthBypass || usedDevBypass) {
+  // Master candidate gate: only Telegram users who are members of the masters group are eligible to appear
+  // in the admin masters approval list. Regular requesters never get a master_profiles row.
+  if (usedDevBypass) {
     const { error: masterUpsertError } = await supabase
       .from('master_profiles')
       .upsert(
@@ -84,6 +86,35 @@ export default defineEventHandler(async (event) => {
 
     if (masterUpsertError) {
       apiError(500, 'db.failed', 'Failed to auto-approve dev master profile', { reason: masterUpsertError.message })
+    }
+  }
+  else if (config.telegramBotToken && Number(config.telegramMastersGroupId) !== 0) {
+    const membership = await isTelegramChatMember(
+      config.telegramBotToken,
+      Number(config.telegramMastersGroupId),
+      telegramUserId
+    )
+
+    if (membership.ok && membership.isMember) {
+      const { data: existingMaster } = await supabase
+        .from('master_profiles')
+        .select('user_id, approval_status')
+        .eq('user_id', user.id)
+        .maybeSingle()
+
+      if (!existingMaster) {
+        const { error: masterInsertError } = await supabase
+          .from('master_profiles')
+          .insert({
+            user_id: user.id,
+            approval_status: 'pending',
+            is_active: false
+          })
+
+        if (masterInsertError) {
+          apiError(500, 'db.failed', 'Failed to create master profile', { reason: masterInsertError.message })
+        }
+      }
     }
   }
 

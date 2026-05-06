@@ -12,6 +12,8 @@ interface DispatchableRequest {
   visit_time_at: string | null
   locale: 'uz_cyrl' | 'ru'
   current_dispatch_attempt: number
+  address_lat?: number | null
+  address_lng?: number | null
 }
 
 function buildClaimButton(config: ReturnType<typeof useRuntimeConfig>, dispatchId: string) {
@@ -67,7 +69,9 @@ export async function createAndSendDispatch(event: H3Event, request: Dispatchabl
     problem_summary: request.problem_summary,
     visit_time_mode: request.visit_time_mode,
     visit_time_at: request.visit_time_at,
-    locale: request.locale
+    locale: request.locale,
+    address_lat: request.address_lat,
+    address_lng: request.address_lng
   })
 
   const claimButton = buildClaimButton(config, dispatch.id)

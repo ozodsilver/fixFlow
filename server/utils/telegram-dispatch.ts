@@ -137,6 +137,42 @@ export function buildMasterClaimNotificationText(input: MasterClaimNotificationI
   ].join('\n')
 }
 
+export async function isTelegramChatMember(
+  botToken: string,
+  chatId: number,
+  telegramUserId: number
+): Promise<{ ok: boolean; isMember: boolean; error?: string }> {
+  try {
+    const url = `https://api.telegram.org/bot${botToken}/getChatMember?chat_id=${chatId}&user_id=${telegramUserId}`
+    const response = await fetch(url)
+    const payload = await response.json() as {
+      ok?: boolean
+      result?: { status?: string; is_member?: boolean }
+      description?: string
+    }
+
+    if (!response.ok || !payload.ok || !payload.result?.status) {
+      return { ok: false, isMember: false, error: payload.description || `HTTP ${response.status}` }
+    }
+
+    const status = payload.result.status
+    const isMember =
+      status === 'creator'
+      || status === 'administrator'
+      || status === 'member'
+      || (status === 'restricted' && payload.result.is_member === true)
+
+    return { ok: true, isMember }
+  }
+  catch (error) {
+    return {
+      ok: false,
+      isMember: false,
+      error: error instanceof Error ? error.message : 'Unknown Telegram getChatMember error'
+    }
+  }
+}
+
 export async function sendTelegramUserMessage(
   botToken: string,
   telegramUserId: number,
