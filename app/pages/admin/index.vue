@@ -245,6 +245,13 @@ const commissionStatusLabel = (status: string) => ({
   paid: 'Тўланган',
   waived: 'Тушириб қолдирилган'
 } as Record<string, string>)[status] ?? status
+
+const masterStatusLabel = (status: string) => ({
+  approved: 'Тасдиқланган',
+  pending: 'Кутилмоқда',
+  revoked: 'Блокланган',
+  not_master: 'Уста эмас'
+} as Record<string, string>)[status] ?? status
 const orderDraftAmountText = (item: AdminOrderItem) => {
   const raw = orderDrafts.value[item.id]?.final_price_amount
   if (raw === null || raw === undefined) return ''
@@ -638,7 +645,7 @@ onMounted(async () => {
                 class="shrink-0 rounded-full px-2 py-1 text-xs font-semibold"
                 :class="masterStatusOf(item) === 'approved' ? 'bg-emerald-100 text-emerald-700' : masterStatusOf(item) === 'revoked' ? 'bg-rose-100 text-rose-700' : 'bg-amber-100 text-amber-700'"
               >
-                {{ masterStatusOf(item) }}
+                {{ masterStatusLabel(masterStatusOf(item)) }}
               </span>
             </div>
 
@@ -657,7 +664,7 @@ onMounted(async () => {
                 :disabled="masterStatusOf(item) === 'approved'"
                 @click="updateMasterStatus(item, 'approved')"
               >
-                Approved
+                Тасдиқлаш
               </UButton>
               <UButton
                 color="neutral"
@@ -666,7 +673,7 @@ onMounted(async () => {
                 :disabled="masterStatusOf(item) === 'pending'"
                 @click="updateMasterStatus(item, 'pending')"
               >
-                Pending
+                Кутилмоқда
               </UButton>
               <UButton
                 color="error"
@@ -675,7 +682,7 @@ onMounted(async () => {
                 :disabled="masterStatusOf(item) === 'revoked'"
                 @click="updateMasterStatus(item, 'revoked')"
               >
-                Revoked
+                Блоклаш
               </UButton>
             </div>
           </section>
