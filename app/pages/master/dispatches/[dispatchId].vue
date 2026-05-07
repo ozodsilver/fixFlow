@@ -36,6 +36,7 @@ const dispatchId = computed(() => String(route.params.dispatchId || ''))
 const getErrorMessage = (error: unknown) => {
   const code = (error as { data?: { error?: { code?: string } } })?.data?.error?.code
   if (code === 'master.not_approved') return t('master.notApproved')
+  if (code === 'master.has_active_order') return t('master.hasActiveOrder')
   return (error as { data?: { error?: { message?: string }, message?: string }, message?: string })?.data?.error?.message
     || (error as { data?: { message?: string } })?.data?.message
     || (error as { message?: string })?.message

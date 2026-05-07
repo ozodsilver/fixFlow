@@ -84,6 +84,7 @@ const uzCyrl: MessageTree = {
   },
   master: {
     notApproved: 'Уста ҳали тасдиқланмаган',
+    hasActiveOrder: 'Сизда ҳали якунланмаган буюртма бор. Янги буюртма олиш учун аввалги буюртмангиз тугалланишини кутинг.',
     dispatchStatus: 'Ҳолат',
     phone: 'Телефон',
     address: 'Манзил',
@@ -187,6 +188,7 @@ const ru: MessageTree = {
   },
   master: {
     notApproved: 'Мастер ещё не подтверждён',
+    hasActiveOrder: 'У вас есть незавершённый заказ. Чтобы принять новый, дождитесь завершения текущего.',
     dispatchStatus: 'Статус',
     phone: 'Телефон',
     address: 'Адрес',
