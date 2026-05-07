@@ -89,32 +89,27 @@ export default defineEventHandler(async (event) => {
     }
   }
   else if (config.telegramBotToken && Number(config.telegramMastersGroupId) !== 0) {
-    const membership = await isTelegramChatMember(
-      config.telegramBotToken,
-      Number(config.telegramMastersGroupId),
-      telegramUserId
-    )
+    const { data: existingMaster } = await supabase
+      .from('master_profiles')
+      .select('user_id')
+      .eq('user_id', user.id)
+      .maybeSingle()
 
-    if (membership.ok && membership.isMember) {
-      const { data: existingMaster } = await supabase
-        .from('master_profiles')
-        .select('user_id, approval_status')
-        .eq('user_id', user.id)
-        .maybeSingle()
-
-      if (!existingMaster) {
-        const { error: masterInsertError } = await supabase
-          .from('master_profiles')
-          .insert({
-            user_id: user.id,
+    if (!existingMaster) {
+      // New user — check group membership in background so auth doesn't block on Telegram API (~300ms)
+      const botToken = config.telegramBotToken
+      const groupId = Number(config.telegramMastersGroupId)
+      const userId = user.id;
+      (async () => {
+        const membership = await isTelegramChatMember(botToken, groupId, telegramUserId!)
+        if (membership.ok && membership.isMember) {
+          await supabase.from('master_profiles').insert({
+            user_id: userId,
             approval_status: 'pending',
             is_active: false
-          })
-
-        if (masterInsertError) {
-          apiError(500, 'db.failed', 'Failed to create master profile', { reason: masterInsertError.message })
+          }).catch(() => {})
         }
-      }
+      })().catch(console.warn)
     }
   }
 

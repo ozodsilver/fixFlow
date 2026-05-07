@@ -81,18 +81,9 @@ const getTelegramInitData = (): string | null => {
   return null
 }
 
-const waitForTelegramInitData = async (): Promise<string | null> => {
-  for (let i = 0; i < 20; i += 1) {
-    const value = getTelegramInitData()
-    if (value) return value
-    await new Promise(resolve => setTimeout(resolve, 120))
-  }
-  return null
-}
-
 const tryTelegramAuth = async () => {
   const runtimeConfig = useRuntimeConfig()
-  const initData = await waitForTelegramInitData()
+  const initData = getTelegramInitData()
 
   if (initData) {
     sessionStorage.setItem('ff_tg_init_data', initData)

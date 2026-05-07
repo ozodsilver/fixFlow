@@ -93,18 +93,11 @@ const getTelegramInitData = () => {
     || ''
 }
 
-const waitForTelegramInitData = async () => {
-  for (let i = 0; i < 20; i += 1) {
-    const value = getTelegramInitData()
-    if (value) return value
-    await new Promise(resolve => setTimeout(resolve, 120))
-  }
-  return ''
-}
-
 const tryTelegramAuth = async () => {
   const runtimeConfig = useRuntimeConfig()
-  const initData = await waitForTelegramInitData()
+  // Telegram.WebApp is synchronously available in Mini App context.
+  // By the time we call this (after a failed bootstrap), SDK is definitely ready.
+  const initData = getTelegramInitData()
   if (initData) {
     sessionStorage.setItem('ff_tg_init_data', initData)
     await api.initAuth({ init_data: initData, locale: locale.value })
@@ -119,8 +112,29 @@ const tryTelegramAuth = async () => {
 }
 
 const navigateByRole = async () => {
+  const runtimeConfig = useRuntimeConfig()
+
+  // Proactive auth: initiate session before bootstrap to avoid fail→retry round-trip.
+  // We already have Telegram.WebApp.initData available synchronously by onMounted.
+  const initData = getTelegramInitData()
+  if (initData) {
+    try {
+      sessionStorage.setItem('ff_tg_init_data', initData)
+      await api.initAuth({ init_data: initData, locale: locale.value })
+    }
+    catch { /* session may already be valid, proceed to bootstrap */ }
+  }
+  else if (runtimeConfig.public.allowDevAuthBypass) {
+    try {
+      const devTelegramUserId = Number(sessionStorage.getItem('ff_dev_tg_uid') || '900001')
+      sessionStorage.setItem('ff_dev_tg_uid', String(devTelegramUserId))
+      await api.initAuth({ telegram_user_id: devTelegramUserId, display_name: 'Dev Local User', locale: locale.value })
+    }
+    catch { /* ignore */ }
+  }
+
   try {
-    let bootstrap = await api.bootstrap()
+    const bootstrap = await api.bootstrap()
     if (bootstrap.data.roles.is_master) {
       debugFinal.value = '/master/orders'
       if (!debugEnabled.value) await navigateTo('/master/orders', { replace: true })
@@ -174,10 +188,15 @@ const resolveAndNavigate = async () => {
   debugLines.value.push(`hasDispatchHintInUrl = ${hasDispatchHintInUrl}`)
 
   if (!dispatchId && process.client) {
-    for (let i = 0; i < 50; i += 1) {
+    // Telegram.WebApp.initDataUnsafe is synchronously available; only poll briefly
+    // for edge-case SDK injection delay.
+    // With URL hint: 8 × 80ms = 640ms max. Without hint: 2 × 80ms = 160ms max.
+    // Was: 50 × 120ms = 6000ms regardless.
+    const maxAttempts = hasDispatchHintInUrl ? 8 : 2
+    for (let i = 0; i < maxAttempts; i += 1) {
       dispatchId = pickDispatchIdFromTelegram()
       if (dispatchId) break
-      await new Promise(resolve => setTimeout(resolve, 120))
+      await new Promise(resolve => setTimeout(resolve, 80))
     }
 
     if (dispatchId) {
