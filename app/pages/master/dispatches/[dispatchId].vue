@@ -13,6 +13,7 @@ const dispatch = ref<{
   expires_at: string | null
   claimed_by_master_id: string | null
   is_claimed_by_current_master: boolean
+  master_has_active_order: boolean
   request: {
     public_code: string
     issue_custom: string | null
@@ -26,7 +27,7 @@ const dispatch = ref<{
   }
 } | null>(null)
 
-const canClaim = computed(() => dispatch.value?.status === 'open')
+const canClaim = computed(() => dispatch.value?.status === 'open' && !dispatch.value?.master_has_active_order)
 const isClaimed = computed(() => dispatch.value?.status === 'claimed')
 const isClaimedByMe = computed(() => !!dispatch.value?.is_claimed_by_current_master)
 const isClaimedByOther = computed(() => isClaimed.value && !isClaimedByMe.value)
@@ -199,8 +200,12 @@ onMounted(loadDispatch)
           :disabled="!canClaim"
           @click="claimDispatch"
         >
-          Buyurtmani qabul qilish
+          Буюртмани қабул қилиш
         </UButton>
+
+        <div v-if="dispatch.master_has_active_order" class="rounded-2xl bg-amber-50 px-4 py-3 text-sm text-amber-800">
+          {{ t('master.hasActiveOrder') }}
+        </div>
 
         <p v-if="successMessage || isClaimedByMe" class="text-sm font-semibold text-emerald-700">
           {{ successMessage || 'Buyurtma qabul qilindi.' }}

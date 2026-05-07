@@ -29,6 +29,27 @@ export default defineEventHandler(async (event) => {
   const request = Array.isArray(dispatch.service_requests) ? dispatch.service_requests[0] : dispatch.service_requests
   const isClaimedByCurrentMaster = dispatch.claimed_by_master_id === ctx.user.id
 
+  const { count: activeOrderCount } = await supabase
+    .from('order_assignments')
+    .select('id', { count: 'exact', head: true })
+    .eq('master_id', ctx.user.id)
+    .eq('is_current', true)
+    .in('orders.status', ['accepted', 'in_progress'])
+
+  // join through orders table to filter by order status
+  const { data: activeAssignments } = await supabase
+    .from('order_assignments')
+    .select('id, orders!order_assignments_order_id_fkey(status)')
+    .eq('master_id', ctx.user.id)
+    .eq('is_current', true)
+
+  const masterHasActiveOrder = (activeAssignments || []).some((a) => {
+    const order = Array.isArray(a.orders) ? a.orders[0] : a.orders
+    return order?.status === 'accepted' || order?.status === 'in_progress'
+  })
+
+  void activeOrderCount
+
   const masked = {
     ...request,
     phone_e164: isClaimedByCurrentMaster ? request.phone_e164 : null,
@@ -43,6 +64,7 @@ export default defineEventHandler(async (event) => {
       expires_at: dispatch.expires_at,
       claimed_by_master_id: dispatch.claimed_by_master_id,
       is_claimed_by_current_master: isClaimedByCurrentMaster,
+      master_has_active_order: masterHasActiveOrder,
       request: masked
     }
   })
