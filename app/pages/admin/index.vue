@@ -433,7 +433,7 @@ onMounted(async () => {
 
 <template>
   <div class="ff-shell min-h-dvh px-4 py-4" :class="loggedIn ? 'pb-28' : ''">
-    <AppHeader title="Admin Panel" :subtitle="activeSubtitle" logo-text="AD" :show-back-button="true" back-to="/" />
+    <AppHeader title="Admin Panel" :subtitle="activeSubtitle" logo-text="AD" :show-back-button="true" back-to="/" :on-refresh="loggedIn ? loadItems : undefined" :refreshing="loading" />
 
     <main class="mt-4 space-y-4">
       <section v-if="!loggedIn" class="ff-panel rounded-3xl p-4 space-y-3">

@@ -9,13 +9,17 @@ const props = withDefaults(
     showLocaleSwitch?: boolean
     showBackButton?: boolean
     backTo?: string
+    onRefresh?: () => void
+    refreshing?: boolean
   }>(),
   {
     subtitle: '',
     logoText: 'FF',
     showLocaleSwitch: true,
     showBackButton: false,
-    backTo: ''
+    backTo: '',
+    onRefresh: undefined,
+    refreshing: false
   }
 )
 
@@ -80,6 +84,16 @@ const goHome = async () => {
         </div>
         <p v-if="props.subtitle" class="mt-0.5 text-xs leading-4 text-[#6d7c70]">{{ props.subtitle }}</p>
       </div>
+
+      <button
+        v-if="props.onRefresh"
+        type="button"
+        class="ff-action mt-0.5 flex h-11 w-11 shrink-0 items-center justify-center text-[#366a57]"
+        aria-label="Yangilash"
+        @click="props.onRefresh"
+      >
+        <UIcon name="i-lucide-refresh-cw" class="size-5 transition-transform" :class="props.refreshing ? 'animate-spin' : ''" />
+      </button>
 
       <div v-if="props.showLocaleSwitch" class="ff-pressed grid shrink-0 grid-cols-2 rounded-2xl p-1">
         <button
