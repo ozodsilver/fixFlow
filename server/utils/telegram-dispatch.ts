@@ -206,16 +206,22 @@ export async function sendTelegramUserMessage(
   botToken: string,
   telegramUserId: number,
   text: string,
-  button?: { text: string; url: string }
+  button?: { text: string; url?: string; webAppUrl?: string }
 ): Promise<{ messageId: number | null; ok: boolean; error?: string }> {
   try {
     const payloadBody: Record<string, unknown> = {
       chat_id: telegramUserId,
       text
     }
-    if (button?.text && button.url) {
+    if (button?.text && (button.webAppUrl || button.url)) {
+      const inlineButton: Record<string, unknown> = { text: button.text }
+      if (button.webAppUrl) {
+        inlineButton.web_app = { url: button.webAppUrl }
+      } else {
+        inlineButton.url = button.url
+      }
       payloadBody.reply_markup = {
-        inline_keyboard: [[{ text: button.text, url: button.url }]]
+        inline_keyboard: [[inlineButton]]
       }
     }
 

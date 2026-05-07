@@ -57,10 +57,25 @@ export default defineEventHandler(async (event) => {
 
   const request = Array.isArray(order?.service_requests) ? order?.service_requests[0] : order?.service_requests
   if (config.telegramBotToken && request) {
-    const miniAppUrl = config.miniAppBaseUrl
-      ? `${String(config.miniAppBaseUrl).replace(/\/+$/, '')}/master/orders/${data.data.order_id}`
-      : ''
     const requester = Array.isArray(request.users) ? request.users[0] : request.users
+    const orderPath = `/master/orders/${data.data.order_id}`
+    const botUsername = String(config.telegramBotUsername || '').trim().replace(/^@/, '')
+    const miniAppShortName = String(config.telegramMiniAppShortName || '').trim()
+    const baseUrl = config.miniAppBaseUrl ? String(config.miniAppBaseUrl).replace(/\/+$/, '') : ''
+    const webAppUrl = baseUrl ? `${baseUrl}${orderPath}` : ''
+    const tMeUrl = botUsername && miniAppShortName
+      ? `https://t.me/${botUsername}/${miniAppShortName}?startapp=${encodeURIComponent(`order_${data.data.order_id}`)}`
+      : botUsername
+        ? `https://t.me/${botUsername}?startapp=${encodeURIComponent(`order_${data.data.order_id}`)}`
+        : ''
+
+    const buttonText = request.locale === 'ru' ? 'Открыть заказ' : 'Буюртмани очиш'
+    const orderButton = webAppUrl
+      ? { text: buttonText, webAppUrl }
+      : tMeUrl
+        ? { text: buttonText, url: tMeUrl }
+        : undefined
+
     const sent = await sendTelegramUserMessage(
       config.telegramBotToken,
       ctx.user.telegram_user_id,
@@ -75,7 +90,7 @@ export default defineEventHandler(async (event) => {
         visit_time_at: request.visit_time_at,
         locale: request.locale
       }),
-      miniAppUrl ? { text: request.locale === 'ru' ? 'Открыть заказ' : 'Буюртмани очиш', url: miniAppUrl } : undefined
+      orderButton
     )
     if (!sent.ok) {
       console.warn('telegram.master_claim_notify_failed', sent.error)
