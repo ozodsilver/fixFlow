@@ -82,6 +82,16 @@ const uzCyrl: MessageTree = {
     statusClosedCanceledAdmin: 'Админ бекор қилди',
     statusClosedUnfulfilled: 'Якунланмади'
   },
+  master: {
+    notApproved: 'Уста ҳали тасдиқланмаган',
+    dispatchStatus: 'Ҳолат',
+    phone: 'Телефон',
+    address: 'Манзил',
+    hiddenUntilClaim: 'Буюртма қабул қилингандан сўнг очилади',
+    status_open: 'Қабул қилиш мумкин',
+    status_claimed: 'Қабул қилинган',
+    status_expired: 'Муддати ўтган'
+  },
   fields: {
     service_domain: 'Хизмат тури',
     issue_type: 'Муаммо тури',
@@ -174,6 +184,16 @@ const ru: MessageTree = {
     statusClosedCanceledUser: 'Отменена клиентом',
     statusClosedCanceledAdmin: 'Отменена админом',
     statusClosedUnfulfilled: 'Не выполнена'
+  },
+  master: {
+    notApproved: 'Мастер ещё не подтверждён',
+    dispatchStatus: 'Статус',
+    phone: 'Телефон',
+    address: 'Адрес',
+    hiddenUntilClaim: 'Откроется после принятия заявки',
+    status_open: 'Можно принять',
+    status_claimed: 'Принята',
+    status_expired: 'Срок истёк'
   },
   fields: {
     service_domain: 'Тип услуги',

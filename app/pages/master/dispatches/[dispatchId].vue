@@ -33,11 +33,14 @@ const isClaimedByOther = computed(() => isClaimed.value && !isClaimedByMe.value)
 
 const dispatchId = computed(() => String(route.params.dispatchId || ''))
 
-const getErrorMessage = (error: unknown) =>
-  (error as { data?: { error?: { message?: string }, message?: string }, message?: string })?.data?.error?.message
-  || (error as { data?: { message?: string } })?.data?.message
-  || (error as { message?: string })?.message
-  || t('common.unexpectedError')
+const getErrorMessage = (error: unknown) => {
+  const code = (error as { data?: { error?: { code?: string } } })?.data?.error?.code
+  if (code === 'master.not_approved') return t('master.notApproved')
+  return (error as { data?: { error?: { message?: string }, message?: string }, message?: string })?.data?.error?.message
+    || (error as { data?: { message?: string } })?.data?.message
+    || (error as { message?: string })?.message
+    || t('common.unexpectedError')
+}
 
 const extractRawParam = (input: string, key: string): string | null => {
   const normalized = input.startsWith('?') || input.startsWith('#') ? input.slice(1) : input
@@ -183,10 +186,9 @@ onMounted(loadDispatch)
         <section class="ff-panel rounded-3xl p-4">
           <p class="text-sm font-bold">{{ dispatch.request.public_code }}</p>
           <p class="mt-1 text-sm text-slate-700">{{ dispatch.request.problem_summary || '-' }}</p>
-          <p class="mt-1 text-xs text-slate-500">Muammo turi: {{ dispatch.request.issue_custom || '-' }}</p>
-          <p class="mt-1 text-xs text-slate-500">Status: {{ dispatch.status }}</p>
-          <p class="mt-1 text-xs text-slate-500">Telefon: {{ dispatch.request.phone_e164 || 'claimdan keyin ochiladi' }}</p>
-          <p class="mt-1 text-xs text-slate-500">Manzil: {{ dispatch.request.address_text || 'claimdan keyin ochiladi' }}</p>
+          <p class="mt-1 text-xs text-slate-500">{{ t('master.dispatchStatus') }}: {{ t(`master.status_${dispatch.status}`) }}</p>
+          <p class="mt-1 text-xs text-slate-500">{{ t('master.phone') }}: {{ dispatch.request.phone_e164 || t('master.hiddenUntilClaim') }}</p>
+          <p class="mt-1 text-xs text-slate-500">{{ t('master.address') }}: {{ dispatch.request.address_text || t('master.hiddenUntilClaim') }}</p>
         </section>
 
         <UButton
