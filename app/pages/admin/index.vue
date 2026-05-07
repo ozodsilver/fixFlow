@@ -231,6 +231,20 @@ const masterStatusOf = (item: MasterItem) => masterProfileOf(item)?.approval_sta
 const pendingMastersCount = computed(() =>
   masterItems.value.filter(item => masterStatusOf(item) === 'pending' || masterStatusOf(item) === 'not_master').length
 )
+
+const orderStatusLabel = (status: string) => ({
+  accepted: 'Қабул қилинган',
+  in_progress: 'Жараёнда',
+  completed: 'Якунланган',
+  canceled_admin: 'Бекор қилинган'
+} as Record<string, string>)[status] ?? status
+
+const commissionStatusLabel = (status: string) => ({
+  not_set: 'Белгиланмаган',
+  unpaid: 'Тўланмаган',
+  paid: 'Тўланган',
+  waived: 'Тушириб қолдирилган'
+} as Record<string, string>)[status] ?? status
 const orderDraftAmountText = (item: AdminOrderItem) => {
   const raw = orderDrafts.value[item.id]?.final_price_amount
   if (raw === null || raw === undefined) return ''
@@ -532,13 +546,13 @@ onMounted(async () => {
             <div class="flex items-start justify-between gap-2">
               <div>
                 <p class="text-sm font-bold">{{ requestOfOrder(item)?.public_code || '-' }}</p>
-                <p class="mt-1 text-xs text-slate-500">Status: {{ item.status }}</p>
+                <p class="mt-1 text-xs text-slate-500">Ҳолат: {{ orderStatusLabel(item.status) }}</p>
               </div>
               <span
                 class="rounded-full px-2 py-1 text-xs font-semibold"
                 :class="item.commission_status === 'paid' ? 'bg-emerald-100 text-emerald-700' : item.commission_status === 'unpaid' ? 'bg-amber-100 text-amber-700' : 'bg-slate-100 text-slate-600'"
               >
-                {{ item.commission_status }}
+                {{ commissionStatusLabel(item.commission_status) }}
               </span>
             </div>
 
