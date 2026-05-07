@@ -201,7 +201,7 @@ onMounted(loadDispatch)
           Буюртмани қабул қилиш
         </UButton>
 
-        <div v-if="dispatch.master_has_active_order" class="rounded-2xl bg-amber-50 px-4 py-3 text-sm text-amber-800">
+        <div v-if="dispatch.master_has_active_order && dispatch.status === 'open'" class="rounded-2xl bg-amber-50 px-4 py-3 text-sm text-amber-800">
           {{ t('master.hasActiveOrder') }}
         </div>
 
