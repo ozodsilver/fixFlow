@@ -178,9 +178,7 @@ onMounted(loadDispatch)
 
 <template>
   <div class="ff-shell min-h-dvh px-4 py-4">
-    <AppHeader title="Master Dispatch" subtitle="Buyurtma preview" logo-text="FF" :show-back-button="true" back-to="/" />
-
-    <main class="mt-4 space-y-3">
+    <main class="space-y-3">
       <LoadingState v-if="loading" :label="t('common.loading')" />
       <ErrorState v-else-if="errorMessage" :title="t('common.unexpectedError')" :message="errorMessage" :retry-label="t('common.retry')" @retry="loadDispatch" />
 
