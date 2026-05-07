@@ -8,6 +8,8 @@ interface DispatchPreviewInput {
   visit_time_mode: 'asap' | 'scheduled' | null
   visit_time_at: string | null
   locale: 'uz_cyrl' | 'ru'
+  address_lat?: number | null
+  address_lng?: number | null
 }
 
 interface AdminReviewNotificationInput {
@@ -48,6 +50,24 @@ function visitTimeLabel(mode: DispatchPreviewInput['visit_time_mode'], at: strin
   return locale === 'ru' ? 'Не указано' : 'Кўрсатилмаган'
 }
 
+async function getDistrictFromCoords(lat: number, lng: number): Promise<string | null> {
+  try {
+    const url = `https://nominatim.openstreetmap.org/reverse?lat=${lat}&lon=${lng}&format=json&addressdetails=1&accept-language=uz,ru`
+    const response = await fetch(url, {
+      headers: { 'User-Agent': 'FixFlow/1.0 (dispatch)' },
+      signal: AbortSignal.timeout(5000)
+    })
+    if (!response.ok) return null
+    const data = await response.json() as { address?: Record<string, string> }
+    const addr = data.address
+    if (!addr) return null
+    return addr.county || addr.city_district || addr.district || addr.suburb || addr.neighbourhood || addr.quarter || null
+  }
+  catch {
+    return null
+  }
+}
+
 async function getDomainName(event: H3Event, domainId: number, locale: DispatchPreviewInput['locale']) {
   const supabase = getSupabaseAdmin(event)
   const { data } = await supabase
@@ -61,10 +81,18 @@ async function getDomainName(event: H3Event, domainId: number, locale: DispatchP
 }
 
 export async function buildDispatchPreviewText(event: H3Event, input: DispatchPreviewInput) {
-  const domainName = await getDomainName(event, input.domain_id, input.locale)
+  const [domainName, district] = await Promise.all([
+    getDomainName(event, input.domain_id, input.locale),
+    input.address_lat != null && input.address_lng != null
+      ? getDistrictFromCoords(input.address_lat, input.address_lng)
+      : Promise.resolve(null)
+  ])
+
   const intro = input.locale === 'ru' ? 'Новая заявка' : 'Янги мурожаат'
   const summaryTitle = input.locale === 'ru' ? 'Кратко' : 'Қисқача'
   const timeTitle = input.locale === 'ru' ? 'Клиент ждет мастера' : 'Мурожаатчи мастерни кутади'
+  const districtLabel = input.locale === 'ru' ? 'Район' : 'Туман'
+  const districtValue = district || (input.locale === 'ru' ? 'Не указано' : 'Кўрсатилмаган')
   const privacyNote =
     input.locale === 'ru'
       ? 'Телефон и точный адрес откроются только после успешного принятия заказа.'
@@ -73,6 +101,7 @@ export async function buildDispatchPreviewText(event: H3Event, input: DispatchPr
   return [
     `📌 ${intro}: ${input.public_code}`,
     `🛠️ ${input.locale === 'ru' ? 'Услуга' : 'Хизмат'}: ${domainName}`,
+    `📍 ${districtLabel}: ${districtValue}`,
     `📝 ${summaryTitle}: ${input.problem_summary || (input.locale === 'ru' ? 'Не указано' : 'Кўрсатилмаган')}`,
     `⏰ ${timeTitle}: ${visitTimeLabel(input.visit_time_mode, input.visit_time_at, input.locale)}`,
     `🔒 ${privacyNote}`
