@@ -413,6 +413,42 @@ const review = async (id: string, action: 'approve' | 'reject') => {
   }
 }
 
+const confirmReset = ref<'' | 'dispatch' | 'orders' | 'masters' | 'cancel' | 'requests'>('')
+const resetting = ref(false)
+
+const resetSectionLabel = computed(() => ({
+  dispatch: 'Барча dispatch review ёзувлари',
+  orders: 'Барча буюртмалар (orders)',
+  masters: 'Барча уста профиллари',
+  cancel: 'Барча бекор қилиш сўровлари',
+  requests: 'Барча мурожаатлар ва буюртмалар'
+} as Record<string, string>)[confirmReset.value] || '')
+
+const resetSection = async () => {
+  if (!confirmReset.value) return
+  resetting.value = true
+  errorMessage.value = ''
+  const sectionMap: Record<string, string> = {
+    dispatch: '/api/v1/admin/dispatch-reviews/reset',
+    orders: '/api/v1/admin/orders/reset',
+    masters: '/api/v1/admin/masters/reset',
+    cancel: '/api/v1/admin/cancel-requests/reset',
+    requests: '/api/v1/admin/requests/reset'
+  }
+  try {
+    await $fetch(sectionMap[confirmReset.value]!, { method: 'DELETE' })
+    confirmReset.value = ''
+    await loadItems()
+  }
+  catch (error: unknown) {
+    errorMessage.value = (error as { data?: { error?: { message?: string } } })?.data?.error?.message || 'Reset failed'
+    confirmReset.value = ''
+  }
+  finally {
+    resetting.value = false
+  }
+}
+
 const logout = async () => {
   await $fetch('/api/v1/admin/auth/logout', { method: 'POST' })
   loggedIn.value = false
@@ -473,7 +509,35 @@ onMounted(async () => {
                     : 'Бекор қилиш кутилаётган сўровлар'
             }}
           </h2>
-          <UButton color="neutral" variant="soft" @click="logout">Chiqish</UButton>
+          <div class="flex items-center gap-2">
+            <UButton
+              color="error"
+              variant="ghost"
+              size="xs"
+              :disabled="resetting"
+              @click="confirmReset = activeSection"
+            >
+              Tozalash
+            </UButton>
+            <UButton color="neutral" variant="soft" @click="logout">Chiqish</UButton>
+          </div>
+        </div>
+
+        <section class="ff-panel rounded-3xl p-3 flex items-center justify-between gap-3">
+          <p class="text-xs text-slate-500">Мурожаатлар рўйхатини tozalash</p>
+          <UButton color="error" variant="ghost" size="xs" :disabled="resetting" @click="confirmReset = 'requests'">
+            Tozalash
+          </UButton>
+        </section>
+
+        <div v-if="confirmReset" class="rounded-2xl border border-rose-200 bg-rose-50 p-4 space-y-3">
+          <p class="text-sm font-semibold text-rose-800">
+            {{ resetSectionLabel }} базадан ўчирилади. Давом этасизми?
+          </p>
+          <div class="flex gap-2">
+            <UButton color="error" variant="soft" size="sm" :loading="resetting" @click="resetSection">Ха, ўчириш</UButton>
+            <UButton color="neutral" variant="soft" size="sm" :disabled="resetting" @click="confirmReset = ''">Bekor</UButton>
+          </div>
         </div>
 
         <LoadingState v-if="loading" label="Yuklanmoqda..." />
